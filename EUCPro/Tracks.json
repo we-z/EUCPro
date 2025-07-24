@@ -1,0 +1,12 @@
+[
+  {"id":"4552EB7A-9E87-4D6F-8D47-A890978B9AF2","name":"Laguna Seca","startFinish":{"latitude":36.5866,"longitude":-121.7537},"waypoints":[]},
+  {"id":"2F7EA8BA-0239-4FD7-939A-4D85A8B6A9DB","name":"Nürburgring GP","startFinish":{"latitude":50.3356,"longitude":6.9475},"waypoints":[]},
+  {"id":"930ED325-59C3-4ADA-863F-AC932C0A8D18","name":"Spa-Francorchamps","startFinish":{"latitude":50.4372,"longitude":5.9714},"waypoints":[]},
+  {"id":"D961B161-6C5E-4B44-B236-2B4A2C307566","name":"Silverstone","startFinish":{"latitude":52.0733,"longitude":-1.0143},"waypoints":[]},
+  {"id":"7183702F-CF1D-40AB-BF33-4C38B4DA15C2","name":"Monza","startFinish":{"latitude":45.6159,"longitude":9.2812},"waypoints":[]},
+  {"id":"5507CDDE-4261-4E12-B979-ED8CA0D24E47","name":"Suzuka","startFinish":{"latitude":34.8433,"longitude":136.5419},"waypoints":[]},
+  {"id":"0E6562BC-6004-4530-8A79-8AAA1F2469E9","name":"Daytona","startFinish":{"latitude":29.1852,"longitude":-81.0705},"waypoints":[]},
+  {"id":"4C05FBB9-98C4-4E76-BA61-285AF404AA18","name":"Interlagos","startFinish":{"latitude":-23.7037,"longitude":-46.6997},"waypoints":[]},
+  {"id":"A1B54F27-64F5-45B9-9392-43C8F676B5D4","name":"Brands Hatch","startFinish":{"latitude":51.3565,"longitude":0.2604},"waypoints":[]},
+  {"id":"363B9E24-6275-4F12-A621-82A99E040594","name":"Willow Springs","startFinish":{"latitude":34.865,"longitude":-118.266},"waypoints":[]}
+] 

@@ -29,9 +29,22 @@
 		7618E1212E32DEAF002C576C /* EUCProUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = EUCProUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		7618E1E62E32FD5B002C576C /* Exceptions for "EUCPro" folder in "EUCPro" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 7618E1062E32DEAE002C576C /* EUCPro */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		7618E1092E32DEAE002C576C /* EUCPro */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				7618E1E62E32FD5B002C576C /* Exceptions for "EUCPro" folder in "EUCPro" target */,
+			);
 			path = EUCPro;
 			sourceTree = "<group>";
 		};
@@ -398,7 +411,8 @@
 				DEVELOPMENT_ASSET_PATHS = "\"EUCPro/Preview Content\"";
 				DEVELOPMENT_TEAM = RQQ92VYL73;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = EUCPro/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -428,7 +442,8 @@
 				DEVELOPMENT_ASSET_PATHS = "\"EUCPro/Preview Content\"";
 				DEVELOPMENT_TEAM = RQQ92VYL73;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = EUCPro/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

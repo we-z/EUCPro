@@ -54,7 +54,7 @@ struct StartView: View {
                     .disabled(selectedMode == .lap && selectedTrack == nil)
                 }
             }
-            .navigationTitle("EUCPro")
+            .navigationTitle("EUC Pro")
             .sheet(isPresented: $showingTrackSelection) {
                 TrackSelectionView(selectedTrack: $selectedTrack)
             }

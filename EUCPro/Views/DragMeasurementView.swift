@@ -12,7 +12,6 @@ struct DragMeasurementView: View {
                 Text(String(format: "%.1f", unit == .mph ? viewModel.currentSpeed : viewModel.currentSpeed * 1.60934))
                     .font(.system(size: 120, weight: .heavy))
                     .monospacedDigit()
-                    .animation(.easeOut(duration: 0.15), value: viewModel.currentSpeed)
                 Text(unit.label.uppercased())
                     .font(.title2)
                     .foregroundColor(.secondary)

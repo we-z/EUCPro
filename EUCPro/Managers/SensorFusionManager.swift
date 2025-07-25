@@ -32,9 +32,11 @@ final class SensorFusionManager: NSObject, ObservableObject {
     private var lastValidLocation: CLLocation?
     private var lastLocationForDistance: CLLocation?
     private var stationaryCounter: Int = 0 // counts consecutive low-accel frames
+    private let stationaryThresholdFrames = 25 // ≈0.5 s at 50 Hz
+    private let accelQuietThreshold = 0.04 // g
 
-    // Smoothing constant for speed filtering (0: no update, 1: instant)
-    private let speedFilterAlpha: Double = 0.35
+    private var speedKF = SpeedEstimator()
+    private var lastMotionTimestamp: TimeInterval? = nil
 
     private override init() {
         super.init()
@@ -75,6 +77,8 @@ final class SensorFusionManager: NSObject, ObservableObject {
         lastPedometerUpdate = nil
         lastPedometerDistance = 0
         stationaryCounter = 0
+        speedKF.reset()
+        lastMotionTimestamp = nil
     }
 
     // MARK: – Core Motion
@@ -86,11 +90,18 @@ final class SensorFusionManager: NSObject, ObservableObject {
             let mag = sqrt(motion.userAcceleration.x * motion.userAcceleration.x +
                            motion.userAcceleration.y * motion.userAcceleration.y +
                            motion.userAcceleration.z * motion.userAcceleration.z)
-            if mag < 0.05 {
+            if mag < accelQuietThreshold {
                 self.stationaryCounter += 1
             } else {
                 self.stationaryCounter = 0
             }
+            let timestamp = motion.timestamp
+            if let lastTs = self.lastMotionTimestamp {
+                let dt = timestamp - lastTs
+                self.speedKF.predict(accelMeasured: mag, dt: dt)
+                self.fusedSpeedMps = self.speedKF.speed
+            }
+            self.lastMotionTimestamp = timestamp
         }
     }
 
@@ -144,13 +155,18 @@ extension SensorFusionManager: CLLocationManagerDelegate {
         }
         lastValidLocation = loc
 
-        // Zero quickly when device stationary (≈1 s at 50 Hz)
-        if stationaryCounter > 50 { rawSpeed = 0 }
-        if rawSpeed < 0.05 { rawSpeed = 0 }
+        // Supply GPS update to Kalman Filter
+        speedKF.update(gpsSpeed: rawSpeed)
 
-        // Exponential smoothing for latency/accuracy trade-off
-        let smoothed = speedFilterAlpha * rawSpeed + (1 - speedFilterAlpha) * fusedSpeedMps
-        fusedSpeedMps = smoothed
+        // Overwrite rawSpeed with filter estimate for further processing
+        rawSpeed = speedKF.speed
+
+        if stationaryCounter >= stationaryThresholdFrames || rawSpeed < 0.2 {
+            rawSpeed = 0
+            speedKF.reset()
+        }
+
+        fusedSpeedMps = rawSpeed
 
         // Distance accumulate (only when horizAcc reasonable < 20 m)
         if loc.horizontalAccuracy < 20 {

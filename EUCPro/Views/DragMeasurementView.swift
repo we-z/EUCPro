@@ -12,7 +12,7 @@ struct DragMeasurementView: View {
             VStack(spacing: 32) {
                 Spacer()
                 Text(String(format: "%.1f", unit == .mph ? viewModel.currentSpeed : viewModel.currentSpeed * 1.60934))
-                    .font(.system(size: 120, weight: .heavy))
+                    .font(.system(size: 180))
                     .monospacedDigit()
                 Text(unit.label.uppercased())
                     .font(.title2)

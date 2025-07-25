@@ -2,34 +2,54 @@ import SwiftUI
 
 struct DragMeasurementView: View {
     @ObservedObject var viewModel: DragViewModel
-    @Environment(\.dismiss) var dismiss
-    
+    @Environment(\.dismiss) private var dismiss
     @AppStorage("speedUnit") private var speedUnitRaw: String = SpeedUnit.mph.rawValue
     private var unit: SpeedUnit { SpeedUnit(rawValue: speedUnitRaw) ?? .mph }
     var body: some View {
-        VStack(spacing: 24) {
-            Text("Speed: \(unit == .mph ? viewModel.currentSpeed : viewModel.currentSpeed * 1.60934, specifier: "%.1f") \(unit.label)")
-                .font(.largeTitle)
-            Text("Distance: \(viewModel.distance, specifier: "%.1f") m")
-            Text("Time: \(viewModel.elapsed, specifier: "%.2f") s")
-            if let metrics = viewModel.finishedMetrics {
-                List {
-                    ForEach(metrics.sorted(by: { $0.key < $1.key }), id: \ .key) { key, value in
-                        HStack {
-                            Text(key)
-                            Spacer()
-                            Text(String(format: "%.2f", value))
-                        }
+        ZStack(alignment: .bottom) {
+            VStack(spacing: 32) {
+                Spacer()
+                Text(String(format: "%.0f", unit == .mph ? viewModel.currentSpeed : viewModel.currentSpeed * 1.60934))
+                    .font(.system(size: 120, weight: .heavy, design: .rounded))
+                    .monospacedDigit()
+                    .animation(.easeOut(duration: 0.15), value: viewModel.currentSpeed)
+                Text(unit.label.uppercased())
+                    .font(.title2)
+                    .foregroundColor(.secondary)
+
+                HStack(spacing: 40) {
+                    VStack {
+                        Text(String(format: "%.1f", viewModel.distance))
+                            .font(.title)
+                            .monospacedDigit()
+                        Text("m")
+                            .foregroundColor(.secondary)
+                    }
+                    VStack {
+                        Text(String(format: "%.2f", viewModel.elapsed))
+                            .font(.title)
+                            .monospacedDigit()
+                        Text("s")
+                            .foregroundColor(.secondary)
                     }
                 }
-                Button("Done") { dismiss() }
-            } else {
-                Button("Stop") { viewModel.manualStop(); dismiss() }
-                    .buttonStyle(.borderedProminent)
+                Spacer()
+            }
+            Button {
+                viewModel.manualStop()
+                dismiss()
+            } label: {
+                Text("STOP")
+                    .font(.title2.bold())
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.red)
+                    .foregroundColor(.white)
+                    .cornerRadius(12)
+                    .padding(.horizontal)
             }
         }
-        .padding()
-        .navigationTitle("Drag Run")
+        .background(Color.black.opacity(0.95).ignoresSafeArea())
         .onAppear {
             LocationManager.shared.start()
             MotionManager.shared.start()

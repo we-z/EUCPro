@@ -20,6 +20,7 @@ final class DragViewModel: ObservableObject, Identifiable {
     private let smoothingFactor: Double = 0.2
     private var speedPoints: [SpeedPoint] = []
     private var cancellables = Set<AnyCancellable>()
+    private var timerCancellable: AnyCancellable?
     
     private let locationManager = LocationManager.shared
     
@@ -27,6 +28,13 @@ final class DragViewModel: ObservableObject, Identifiable {
         self.startSpeed = startSpeed
         self.targetSpeed = targetSpeed
         self.targetDistance = targetDistance
+        startTime = Date()
+        timerCancellable = Timer.publish(every: 0.02, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                guard let self, let st = self.startTime else { return }
+                self.elapsed = Date().timeIntervalSince(st)
+            }
         subscribe()
     }
     
@@ -69,6 +77,14 @@ final class DragViewModel: ObservableObject, Identifiable {
                 startLocation = location
                 lastSampleLocation = location
                 speedPoints.append(SpeedPoint(timestamp: now, speed: filteredSpeed, distance: 0))
+
+                // start high-freq timer for elapsed updates
+                timerCancellable = Timer.publish(every: 0.02, on: .main, in: .common)
+                    .autoconnect()
+                    .sink { [weak self] _ in
+                        guard let self, let st = self.startTime else { return }
+                        self.elapsed = Date().timeIntervalSince(st)
+                    }
             }
             return
         }
@@ -97,6 +113,7 @@ final class DragViewModel: ObservableObject, Identifiable {
     
     private func finish() {
         if finishedMetrics != nil { return }
+        timerCancellable?.cancel()
         stop()
         var metrics: [String: Double] = [
             "Elapsed": elapsed,
@@ -124,6 +141,7 @@ final class DragViewModel: ObservableObject, Identifiable {
     
     func stop() {
         LocationManager.shared.stop()
+        timerCancellable?.cancel()
         reset()
     }
 } 

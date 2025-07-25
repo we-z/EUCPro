@@ -3,34 +3,54 @@ import Charts
 
 struct LapTimerView: View {
     @ObservedObject var viewModel: LapViewModel
-    @Environment(\.dismiss) var dismiss
+    @Environment(\.dismiss) private var dismiss
     @AppStorage("speedUnit") private var speedUnitRaw: String = SpeedUnit.mph.rawValue
     private var unit: SpeedUnit { SpeedUnit(rawValue: speedUnitRaw) ?? .mph }
     var body: some View {
-        VStack(spacing: 16) {
-            Text("Speed: \(unit == .mph ? viewModel.currentSpeed : viewModel.currentSpeed * 1.60934, specifier: "%.1f") \(unit.label)")
-                .font(.title)
-            Text("Lap Time: \(viewModel.currentLapTime, specifier: "%.2f") s")
-            if viewModel.predictiveLap > 0 {
-                Text("Predicted: \(viewModel.predictiveLap, specifier: "%.2f") s")
-            }
-            List {
-                ForEach(Array(viewModel.completedLaps.enumerated()), id: \ .offset) { idx, lap in
-                    HStack {
-                        Text("Lap \(idx + 1)")
-                        Spacer()
-                        Text(String(format: "%.2f s", lap))
+        ZStack(alignment: .bottom) {
+            VStack(spacing: 28) {
+                Spacer()
+                Text(String(format: "%.0f", unit == .mph ? viewModel.currentSpeed : viewModel.currentSpeed * 1.60934))
+                    .font(.system(size: 100, weight: .heavy, design: .rounded))
+                    .monospacedDigit()
+                    .animation(.easeOut(duration: 0.15), value: viewModel.currentSpeed)
+                Text(unit.label.uppercased())
+                    .font(.title3)
+                    .foregroundColor(.secondary)
+                Text(String(format: "Lap %.2f s", viewModel.currentLapTime))
+                    .font(.title2)
+
+                if viewModel.predictiveLap > 0 {
+                    Text(String(format: "Pred %.2f s", viewModel.predictiveLap))
+                        .foregroundColor(.orange)
+                }
+                List {
+                    ForEach(Array(viewModel.completedLaps.enumerated()), id: \ .offset) { idx, lap in
+                        HStack {
+                            Text("Lap \(idx+1)")
+                            Spacer()
+                            Text(String(format: "%.2f", lap))
+                        }
                     }
                 }
+                .frame(maxHeight: 200)
+                Spacer()
             }
-            Button("Finish Session") {
+            Button {
                 viewModel.finishSession()
                 dismiss()
+            } label: {
+                Text("FINISH")
+                    .font(.title2.bold())
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.red)
+                    .foregroundColor(.white)
+                    .cornerRadius(12)
+                    .padding(.horizontal)
             }
-            .buttonStyle(.borderedProminent)
         }
-        .padding()
-        .navigationTitle(viewModel.track.name)
+        .background(Color.black.opacity(0.95).ignoresSafeArea())
         .onAppear {
             LocationManager.shared.start()
             MotionManager.shared.start()

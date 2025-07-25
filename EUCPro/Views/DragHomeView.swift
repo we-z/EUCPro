@@ -25,7 +25,7 @@ struct DragHomeView: View {
                 .padding(.horizontal)
             }
             .navigationTitle("Drag")
-            .sheet(item: $runViewModel) { vm in
+            .fullScreenCover(item: $runViewModel) { vm in
                 DragMeasurementView(viewModel: vm)
             }
         }

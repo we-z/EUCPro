@@ -14,10 +14,18 @@ final class LapViewModel: ObservableObject, Identifiable {
     private var lastCrossTime: Date?
     private var cancellables = Set<AnyCancellable>()
     private var speedPoints: [SpeedPoint] = []
+    private var timerCancellable: AnyCancellable?
     
     init(track: Track) {
         self.track = track
         self.startLocation = track.startFinishLocation()
+        lastCrossTime = Date()
+        timerCancellable = Timer.publish(every: 0.02, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                guard let self, let last = self.lastCrossTime else { return }
+                self.currentLapTime = Date().timeIntervalSince(last)
+            }
         subscribe()
     }
     
@@ -44,6 +52,13 @@ final class LapViewModel: ObservableObject, Identifiable {
                 predictiveLap = predictive()
             } else if lastCrossTime == nil {
                 lastCrossTime = Date()
+                // start timer
+                timerCancellable = Timer.publish(every: 0.02, on: .main, in: .common)
+                    .autoconnect()
+                    .sink { [weak self] _ in
+                        guard let self, let last = self.lastCrossTime else { return }
+                        self.currentLapTime = Date().timeIntervalSince(last)
+                    }
             }
         }
         if lastCrossTime != nil {
@@ -62,6 +77,7 @@ final class LapViewModel: ObservableObject, Identifiable {
     
     func finishSession() {
         guard !completedLaps.isEmpty else { return }
+        timerCancellable?.cancel()
         let metrics: [String: Double] = [
             "Best Lap": completedLaps.min() ?? 0,
             "Average Lap": completedLaps.reduce(0, +)/Double(completedLaps.count),

@@ -25,7 +25,7 @@ struct TrackHomeView: View {
             .sheet(isPresented: $showTrackSheet) {
                 TrackSelectionView(selectedTrack: $selectedTrack)
             }
-            .sheet(item: $lapVM) { vm in
+            .fullScreenCover(item: $lapVM) { vm in
                 LapTimerView(viewModel: vm)
             }
         }

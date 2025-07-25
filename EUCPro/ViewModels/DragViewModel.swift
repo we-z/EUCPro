@@ -92,13 +92,8 @@ final class DragViewModel: ObservableObject, Identifiable {
 
         elapsed = now.timeIntervalSince(startTime)
 
-        if let last = lastSampleLocation {
-            let ds = location.distance(from: last)
-            // Ignore noise below horizontal accuracy
-            if ds >= location.horizontalAccuracy {
-                distance += ds
-            }
-            lastSampleLocation = location
+        if let startLocation {
+            distance = location.distance(from: startLocation)
         }
         speedPoints.append(SpeedPoint(timestamp: now, speed: filteredSpeed, distance: distance))
         print(String(format: "Δdist %.2f m | total %.2f m", distance, distance))

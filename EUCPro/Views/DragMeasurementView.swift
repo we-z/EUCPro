@@ -9,7 +9,7 @@ struct DragMeasurementView: View {
         ZStack(alignment: .bottom) {
             VStack(spacing: 32) {
                 Spacer()
-                Text(String(format: "%.0f", unit == .mph ? viewModel.currentSpeed : viewModel.currentSpeed * 1.60934))
+                Text(String(format: "%.1f", unit == .mph ? viewModel.currentSpeed : viewModel.currentSpeed * 1.60934))
                     .font(.system(size: 120, weight: .heavy, design: .rounded))
                     .monospacedDigit()
                     .animation(.easeOut(duration: 0.15), value: viewModel.currentSpeed)
@@ -19,10 +19,10 @@ struct DragMeasurementView: View {
 
                 HStack(spacing: 40) {
                     VStack {
-                        Text(String(format: "%.1f", viewModel.distance))
+                        Text(String(format: "%.2f", unit.convert(distanceMeters: viewModel.distance)))
                             .font(.title)
                             .monospacedDigit()
-                        Text("m")
+                        Text(unit.distanceLabel)
                             .foregroundColor(.secondary)
                     }
                     VStack {

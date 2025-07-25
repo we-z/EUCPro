@@ -10,7 +10,7 @@ struct LapTimerView: View {
         ZStack(alignment: .bottom) {
             VStack(spacing: 28) {
                 Spacer()
-                Text(String(format: "%.0f", unit == .mph ? viewModel.currentSpeed : viewModel.currentSpeed * 1.60934))
+                Text(String(format: "%.1f", unit == .mph ? viewModel.currentSpeed : viewModel.currentSpeed * 1.60934))
                     .font(.system(size: 100, weight: .heavy, design: .rounded))
                     .monospacedDigit()
                     .animation(.easeOut(duration: 0.15), value: viewModel.currentSpeed)

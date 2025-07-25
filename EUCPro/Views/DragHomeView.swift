@@ -1,7 +1,8 @@
 import SwiftUI
 
 struct DragHomeView: View {
-    @State private var dragTargetSpeed: String = "40"
+    @AppStorage("speedUnit") private var speedUnitRaw: String = SpeedUnit.mph.rawValue
+    @State private var dragTargetSpeed: Int = 40
     @State private var dragTargetDistance: String = ""
     @State private var showRun = false
     @State private var runViewModel: DragViewModel? = nil
@@ -16,7 +17,8 @@ struct DragHomeView: View {
                         .background(.thinMaterial)
                         .clipShape(RoundedRectangle(cornerRadius: 16))
                         .padding(.top)
-                        .animation(.spring(), value: dragTargetSpeed+dragTargetDistance)
+                        .shadow(radius: 3)
+                        .animation(.spring(), value: "\(dragTargetSpeed)\(dragTargetDistance)")
                     if !dragRuns.isEmpty {
                         historySection
                             .transition(.move(edge: .bottom))
@@ -34,11 +36,12 @@ struct DragHomeView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Configure Run")
                 .font(.headline)
+            let unit = SpeedUnit(rawValue: speedUnitRaw) ?? .mph
             HStack {
-                TextField("Target Speed (mph)", text: $dragTargetSpeed)
-                    .keyboardType(.decimalPad)
+                TextField("Target Speed (\(unit.label))", value: $dragTargetSpeed, format: .number)
+                    .keyboardType(.numberPad)
                     .textFieldStyle(.roundedBorder)
-                Text("mph")
+                Text(unit.label)
             }
             HStack {
                 TextField("Target Distance (m)", text: $dragTargetDistance)
@@ -47,8 +50,8 @@ struct DragHomeView: View {
                 Text("m")
             }
             Button {
-                let mph = Double(dragTargetSpeed) ?? 60
-                let mps = mph*0.44704
+                let mphValue = unit == .mph ? Double(dragTargetSpeed) : Double(dragTargetSpeed) * 0.621371
+                let mps = (mphValue ?? 60) * 0.44704
                 let dist = Double(dragTargetDistance)
                 runViewModel = DragViewModel(startSpeed: 0, targetSpeed: dist == nil ? mps : nil, targetDistance: dist)
             } label: {

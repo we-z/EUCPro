@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct DragHomeView: View {
-    @State private var dragTargetSpeed: String = "60"
+    @State private var dragTargetSpeed: String = "40"
     @State private var dragTargetDistance: String = ""
     @State private var showRun = false
     @State private var runViewModel: DragViewModel? = nil
@@ -16,7 +16,6 @@ struct DragHomeView: View {
                         .background(.thinMaterial)
                         .clipShape(RoundedRectangle(cornerRadius: 16))
                         .padding(.top)
-                        .shadow(radius: 5)
                         .animation(.spring(), value: dragTargetSpeed+dragTargetDistance)
                     if !dragRuns.isEmpty {
                         historySection

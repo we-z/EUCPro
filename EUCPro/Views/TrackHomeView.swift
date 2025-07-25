@@ -14,7 +14,6 @@ struct TrackHomeView: View {
                         .padding()
                         .background(.thinMaterial)
                         .clipShape(RoundedRectangle(cornerRadius: 16))
-                        .shadow(radius: 5)
                         .padding(.top)
                     if !lapRuns.isEmpty {
                         historySection

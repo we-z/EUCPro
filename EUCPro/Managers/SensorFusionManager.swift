@@ -90,7 +90,7 @@ final class SensorFusionManager: NSObject, ObservableObject {
             let mag = sqrt(motion.userAcceleration.x * motion.userAcceleration.x +
                            motion.userAcceleration.y * motion.userAcceleration.y +
                            motion.userAcceleration.z * motion.userAcceleration.z)
-            if mag < accelQuietThreshold {
+            if mag < self.accelQuietThreshold {
                 self.stationaryCounter += 1
             } else {
                 self.stationaryCounter = 0
@@ -102,6 +102,12 @@ final class SensorFusionManager: NSObject, ObservableObject {
                 self.fusedSpeedMps = self.speedKF.speed
             }
             self.lastMotionTimestamp = timestamp
+            // Instant zeroing when device is at rest for consecutive frames
+            if self.stationaryCounter >= self.stationaryThresholdFrames {
+                self.speedKF.reset()
+                self.fusedSpeedMps = 0
+                return
+            }
         }
     }
 

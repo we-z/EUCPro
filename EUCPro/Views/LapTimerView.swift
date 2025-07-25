@@ -6,7 +6,7 @@ struct LapTimerView: View {
     @Environment(\.dismiss) var dismiss
     var body: some View {
         VStack(spacing: 16) {
-            Text("Speed: \(viewModel.currentSpeed, specifier: "%.1f") km/h")
+            Text("Speed: \(viewModel.currentSpeed, specifier: "%.1f") mph")
                 .font(.title)
             Text("Lap Time: \(viewModel.currentLapTime, specifier: "%.2f") s")
             if viewModel.predictiveLap > 0 {

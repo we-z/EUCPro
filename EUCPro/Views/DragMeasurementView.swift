@@ -6,7 +6,7 @@ struct DragMeasurementView: View {
     
     var body: some View {
         VStack(spacing: 24) {
-            Text("Speed: \(viewModel.currentSpeed, specifier: "%.1f") km/h")
+            Text("Speed: \(viewModel.currentSpeed, specifier: "%.1f") mph")
                 .font(.largeTitle)
             Text("Distance: \(viewModel.distance, specifier: "%.1f") m")
             Text("Time: \(viewModel.elapsed, specifier: "%.2f") s")
@@ -22,7 +22,7 @@ struct DragMeasurementView: View {
                 }
                 Button("Done") { dismiss() }
             } else {
-                Button("Stop") { dismiss() }
+                Button("Stop") { viewModel.manualStop(); dismiss() }
                     .buttonStyle(.borderedProminent)
             }
         }

@@ -31,7 +31,7 @@ final class LapViewModel: ObservableObject {
     }
     
     private func handle(location: CLLocation) {
-        currentSpeed = max(location.speed, 0) * 3.6
+        currentSpeed = max(location.speed, 0) * 2.23694
         if let last = lastCrossTime {
             currentLapTime = Date().timeIntervalSince(last)
         }

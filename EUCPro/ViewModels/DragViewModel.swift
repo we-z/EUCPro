@@ -2,7 +2,8 @@ import Foundation
 import Combine
 import CoreLocation
 
-final class DragViewModel: ObservableObject {
+final class DragViewModel: ObservableObject, Identifiable {
+    let id = UUID()
     let startSpeed: Double // m/s
     let targetSpeed: Double?
     let targetDistance: Double?

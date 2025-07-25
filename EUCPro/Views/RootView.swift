@@ -3,13 +3,17 @@ import SwiftUI
 struct RootView: View {
     var body: some View {
         TabView {
-            StartView()
+            DragHomeView()
                 .tabItem {
-                    Label("Start", systemImage: "flag.checkered")
+                    Label("Drag", systemImage: "gauge.high")
                 }
-            HistoryView()
+            TrackHomeView()
                 .tabItem {
-                    Label("History", systemImage: "clock.arrow.circlepath")
+                    Label("Track", systemImage: "map")
+                }
+            AccountView()
+                .tabItem {
+                    Label("Account", systemImage: "person.crop.circle")
                 }
         }
     }

@@ -4,9 +4,11 @@ import Charts
 struct LapTimerView: View {
     @ObservedObject var viewModel: LapViewModel
     @Environment(\.dismiss) var dismiss
+    @AppStorage("speedUnit") private var speedUnitRaw: String = SpeedUnit.mph.rawValue
+    private var unit: SpeedUnit { SpeedUnit(rawValue: speedUnitRaw) ?? .mph }
     var body: some View {
         VStack(spacing: 16) {
-            Text("Speed: \(viewModel.currentSpeed, specifier: "%.1f") mph")
+            Text("Speed: \(unit == .mph ? viewModel.currentSpeed : viewModel.currentSpeed * 1.60934, specifier: "%.1f") \(unit.label)")
                 .font(.title)
             Text("Lap Time: \(viewModel.currentLapTime, specifier: "%.2f") s")
             if viewModel.predictiveLap > 0 {

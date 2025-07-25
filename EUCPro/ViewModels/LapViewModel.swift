@@ -2,7 +2,8 @@ import Foundation
 import CoreLocation
 import Combine
 
-final class LapViewModel: ObservableObject {
+final class LapViewModel: ObservableObject, Identifiable {
+    let id = UUID()
     let track: Track
     @Published var currentSpeed: Double = 0
     @Published var currentLapTime: Double = 0

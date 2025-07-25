@@ -31,6 +31,7 @@ final class SensorFusionManager: NSObject, ObservableObject {
     // MARK: – Integration state for dead-reckoning
     private var lastValidLocation: CLLocation?
     private var lastLocationForDistance: CLLocation?
+    private var stationaryCounter: Int = 0 // counts consecutive low-accel frames
 
     private override init() {
         super.init()
@@ -64,6 +65,15 @@ final class SensorFusionManager: NSObject, ObservableObject {
         motionManager.startDeviceMotionUpdates(to: .main) { [weak self] motion, error in
             guard let self, let motion else { return }
             self.fusedOrientation = motion.attitude
+            // Stationary detector – increment when negligible user acceleration
+            let mag = sqrt(motion.userAcceleration.x * motion.userAcceleration.x +
+                           motion.userAcceleration.y * motion.userAcceleration.y +
+                           motion.userAcceleration.z * motion.userAcceleration.z)
+            if mag < 0.05 {
+                self.stationaryCounter += 1
+            } else {
+                self.stationaryCounter = 0
+            }
         }
     }
 
@@ -82,9 +92,10 @@ final class SensorFusionManager: NSObject, ObservableObject {
                             let now = Date()
                             if let lastT = self.lastPedometerUpdate {
                                 let dt = now.timeIntervalSince(lastT)
-                                if dt > 0.3 { // avoid too high frequency noise
-                                    let speed = deltaD / dt // m/s
-                                    if speed > 0.1 { self.fusedSpeedMps = speed }
+                                if dt > 0.15 { // shorter threshold for more responsive updates
+                                    // Calculate indoor walking speed but don't overwrite GPS-derived fusedSpeedMps here;
+                                    // we'll expose it later as a separate metric if needed.
+                                    _ = deltaD / dt // m/s (computed but not stored; could be used for indoor metrics later)
                                 }
                             }
                             self.lastPedometerUpdate = now
@@ -104,9 +115,27 @@ final class SensorFusionManager: NSObject, ObservableObject {
 extension SensorFusionManager: CLLocationManagerDelegate {
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let loc = locations.last else { return }
-        lastValidLocation = loc
         fusedLocation = loc
-        fusedSpeedMps = loc.speed >= 0 && loc.horizontalAccuracy < 50 ? loc.speed : fusedSpeedMps
+
+        // Derive the most responsive speed estimate possible
+        var instantaneousSpeed = max(loc.speed, 0)
+        if instantaneousSpeed == 0, let last = lastValidLocation {
+            let dt = loc.timestamp.timeIntervalSince(last.timestamp)
+            if dt > 0 {
+                instantaneousSpeed = loc.distance(from: last) / dt
+            }
+        }
+        lastValidLocation = loc
+
+        // Zero speed quickly when device deemed stationary ~1.5 s
+        if stationaryCounter > 75 { // 75 frames ≈ 1.5 s at 50 Hz
+            instantaneousSpeed = 0
+        }
+
+        // Ignore tiny jitters
+        if instantaneousSpeed < 0.05 { instantaneousSpeed = 0 }
+
+        fusedSpeedMps = instantaneousSpeed
 
         // distance accumulate
         if let last = lastLocationForDistance {

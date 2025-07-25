@@ -19,6 +19,7 @@ final class LocationManager: NSObject, ObservableObject {
         locationManager.delegate = self
         locationManager.activityType = .automotiveNavigation
         locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
+        locationManager.distanceFilter = kCLDistanceFilterNone
         let bgModes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String]
         if bgModes?.contains("location") == true {
             locationManager.allowsBackgroundLocationUpdates = true

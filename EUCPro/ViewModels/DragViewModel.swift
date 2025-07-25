@@ -135,22 +135,15 @@ final class DragViewModel: ObservableObject, Identifiable {
         // Use Core Location's Doppler speed for simplicity; fallback to 0 if invalid (-1)
         let gpsSpeed = location.speed >= 0 ? location.speed : 0 // m/s
 
-        // Use GPS speed, but clamp to zero quickly if device is stationary per accelerometer
-        var displaySpeed = gpsSpeed * mphFactor // mph
-
-        // Fallback to pedometer speed when GPS weak (<1 mph)
-        if displaySpeed < 1.0 {
-            displaySpeed = max(displaySpeed, pedometerSpeedMps * mphFactor)
+        // Keep using GPS speed internally for metrics but don't override currentSpeed;
+        // currentSpeed is now driven by the fused sensor stream for maximum accuracy.
+        var internalSpeedMph = gpsSpeed * mphFactor
+        if stationaryCounter > 25 && internalSpeedMph < 3.0 {
+            internalSpeedMph = 0
         }
 
-        // Fast zeroing when stationary (no accel for ~0.5 s)
-        if stationaryCounter > 25 && displaySpeed < 3.0 {
-            displaySpeed = 0
-        }
-
-        currentSpeed = displaySpeed
-        if currentSpeed > peakSpeedMph {
-            peakSpeedMph = currentSpeed
+        if internalSpeedMph > peakSpeedMph {
+            peakSpeedMph = internalSpeedMph
         }
 
         // Debug logging

@@ -1,10 +1,12 @@
 import SwiftUI
+import CoreLocation
 
 struct DragMeasurementView: View {
     @ObservedObject var viewModel: DragViewModel
     @Environment(\.dismiss) private var dismiss
     @AppStorage("speedUnit") private var speedUnitRaw: String = SpeedUnit.mph.rawValue
     private var unit: SpeedUnit { SpeedUnit(rawValue: speedUnitRaw) ?? .mph }
+    @StateObject private var fusion = SensorFusionManager.shared
     var body: some View {
         ZStack(alignment: .bottom) {
             VStack(spacing: 32) {
@@ -34,6 +36,20 @@ struct DragMeasurementView: View {
                 }
                 Spacer()
             }
+            // Debug sensor info
+            VStack(alignment: .leading, spacing: 4) {
+                Text(String(format: "Fused Speed: %.2f m/s (%.2f mph)", fusion.fusedSpeedMps, fusion.fusedSpeedMps*2.23694))
+                if let loc = fusion.fusedLocation {
+                    Text(String(format: "Fused Lat: %.5f  Lon: %.5f", loc.coordinate.latitude, loc.coordinate.longitude))
+                    Text(String(format: "Alt: %.1f m  HAcc: %.1f", loc.altitude, loc.horizontalAccuracy))
+                }
+                Text(String(format: "Heading: %.1f°", fusion.fusedHeading))
+                Text("Steps: \(fusion.stepCount)")
+            }
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .padding(.horizontal)
+            .padding(.bottom, 80)
             Button {
                 viewModel.manualStop()
                 dismiss()
@@ -51,7 +67,11 @@ struct DragMeasurementView: View {
         .onAppear {
             LocationManager.shared.start()
             MotionManager.shared.start()
+            SensorFusionManager.shared.start()
         }
-        .onDisappear { viewModel.stop() }
+        .onDisappear {
+            viewModel.stop()
+            SensorFusionManager.shared.stop()
+        }
     }
 } 

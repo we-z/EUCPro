@@ -2,6 +2,9 @@ import Foundation
 import Combine
 import CoreLocation
 import CoreMotion
+import simd
+// NEW: Sensor fusion for accurate indoor/outdoor speed
+import CoreLocation
 
 final class DragViewModel: ObservableObject, Identifiable {
     let id = UUID()
@@ -13,6 +16,7 @@ final class DragViewModel: ObservableObject, Identifiable {
     @Published var elapsed: Double = 0
     @Published var distance: Double = 0
     @Published var finishedMetrics: [String: Double]? = nil
+    private var peakSpeedMph: Double = 0
     
     private var startTime: Date?
     private var startLocation: CLLocation?
@@ -20,10 +24,17 @@ final class DragViewModel: ObservableObject, Identifiable {
     // Removed filteredSpeed and smoothingFactor for real-time speed reporting
     private var speedPoints: [SpeedPoint] = []
     private var recentAccelerationMagnitude: Double = 0
+    private var stationaryCounter: Int = 0 // counts motion frames below threshold
+
+    // Pedometer fallback when GPS is unreliable (indoor usage)
+    private let pedometer = CMPedometer()
+    private var pedometerDistance: Double = 0
+    private var pedometerSpeedMps: Double = 0
     private var cancellables = Set<AnyCancellable>()
     private var timerCancellable: AnyCancellable?
     
     private let locationManager = LocationManager.shared
+    private let fusionManager = SensorFusionManager.shared
     
     init(startSpeed: Double = 0, targetSpeed: Double? = nil, targetDistance: Double? = nil) {
         self.startSpeed = startSpeed
@@ -37,7 +48,9 @@ final class DragViewModel: ObservableObject, Identifiable {
                 self.elapsed = Date().timeIntervalSince(st)
             }
         subscribe()
+        subscribeFusion()
         subscribeMotion()
+        startPedometer()
     }
     
     func reset() {
@@ -47,6 +60,7 @@ final class DragViewModel: ObservableObject, Identifiable {
         distance = 0
         speedPoints.removeAll()
         finishedMetrics = nil
+        peakSpeedMph = 0
     }
     
     private func subscribe() {
@@ -58,13 +72,62 @@ final class DragViewModel: ObservableObject, Identifiable {
             .store(in: &cancellables)
     }
     
+    private func subscribeFusion() {
+        // Map fused speed to currentSpeed (mph)
+        fusionManager.$fusedSpeedMps
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] mps in
+                guard let self else { return }
+                let mph = mps * 2.23694
+                self.currentSpeed = mph
+                if mph > self.peakSpeedMph { self.peakSpeedMph = mph }
+            }
+            .store(in: &cancellables)
+
+        // Track distance using fusedDistanceMeters
+        fusionManager.$fusedDistanceMeters
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] dist in
+                guard let self else { return }
+                if dist > self.distance {
+                    self.distance = dist
+                }
+            }
+            .store(in: &cancellables)
+    }
+    
     private func subscribeMotion() {
         MotionManager.shared.$userAcceleration
             .sink { [weak self] acc in
+                guard let self else { return }
                 let mag = sqrt(acc.x * acc.x + acc.y * acc.y + acc.z * acc.z)
-                self?.recentAccelerationMagnitude = mag
+                self.recentAccelerationMagnitude = mag
+
+                // Simple stationary detector
+                if mag < 0.05 {
+                    self.stationaryCounter += 1
+                } else {
+                    self.stationaryCounter = 0
+                }
             }
             .store(in: &cancellables)
+    }
+
+    private func startPedometer() {
+        guard CMPedometer.isDistanceAvailable(), CMPedometer.isPaceAvailable() else { return }
+        pedometer.startUpdates(from: Date()) { [weak self] data, error in
+            guard let self, let data else { return }
+            DispatchQueue.main.async {
+                if let distance = data.distance?.doubleValue {
+                    self.pedometerDistance = distance
+                }
+                if let pace = data.currentPace?.doubleValue, pace > 0 {
+                    self.pedometerSpeedMps = 1.0 / pace // m/s
+                } else {
+                    self.pedometerSpeedMps = 0
+                }
+            }
+        }
     }
     
     private func handle(location: CLLocation) {
@@ -74,10 +137,21 @@ final class DragViewModel: ObservableObject, Identifiable {
 
         // Use GPS speed, but clamp to zero quickly if device is stationary per accelerometer
         var displaySpeed = gpsSpeed * mphFactor // mph
-        if displaySpeed < 1.0 && recentAccelerationMagnitude < 0.02 { // ~0.02 g threshold
+
+        // Fallback to pedometer speed when GPS weak (<1 mph)
+        if displaySpeed < 1.0 {
+            displaySpeed = max(displaySpeed, pedometerSpeedMps * mphFactor)
+        }
+
+        // Fast zeroing when stationary (no accel for ~0.5 s)
+        if stationaryCounter > 25 && displaySpeed < 3.0 {
             displaySpeed = 0
         }
+
         currentSpeed = displaySpeed
+        if currentSpeed > peakSpeedMph {
+            peakSpeedMph = currentSpeed
+        }
 
         // Debug logging
         print(String(format: "GPS raw %.2f m/s (%.2f mph) | horizAcc %.1f m", gpsSpeed, currentSpeed, location.horizontalAccuracy))
@@ -106,9 +180,14 @@ final class DragViewModel: ObservableObject, Identifiable {
 
         elapsed = now.timeIntervalSince(startTime)
 
+        var gpsDistance: Double = 0
         if let startLocation {
-            distance = location.distance(from: startLocation)
+            gpsDistance = location.distance(from: startLocation)
         }
+
+        // Combine pedometer distance when larger (indoor, small movements)
+        distance = max(gpsDistance, pedometerDistance)
+
         speedPoints.append(SpeedPoint(timestamp: now, speed: gpsSpeed, distance: distance))
         print(String(format: "Δdist %.2f m | total %.2f m", distance, distance))
         
@@ -126,7 +205,7 @@ final class DragViewModel: ObservableObject, Identifiable {
         var metrics: [String: Double] = [
             "Elapsed": elapsed,
             "Distance_m": distance,
-            "PeakSpeed_mph": currentSpeed
+            "PeakSpeed_mph": peakSpeedMph
         ]
         if let targetSpeed = targetSpeed {
             metrics["TargetSpeed_mph"] = targetSpeed * 2.23694
@@ -152,6 +231,7 @@ final class DragViewModel: ObservableObject, Identifiable {
     func stop() {
         LocationManager.shared.stop()
         timerCancellable?.cancel()
+        peakSpeedMph = 0
         reset()
     }
 } 

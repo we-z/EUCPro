@@ -51,9 +51,11 @@ final class DragViewModel: ObservableObject, Identifiable {
         subscribeFusion()
         subscribeMotion()
         startPedometer()
+        SensorFusionManager.shared.reset()
     }
     
     func reset() {
+        SensorFusionManager.shared.reset()
         startTime = nil
         startLocation = nil
         elapsed = 0

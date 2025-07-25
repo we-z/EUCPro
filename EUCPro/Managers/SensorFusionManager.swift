@@ -33,6 +33,9 @@ final class SensorFusionManager: NSObject, ObservableObject {
     private var lastLocationForDistance: CLLocation?
     private var stationaryCounter: Int = 0 // counts consecutive low-accel frames
 
+    // Smoothing constant for speed filtering (0: no update, 1: instant)
+    private let speedFilterAlpha: Double = 0.35
+
     private override init() {
         super.init()
         locationManager.delegate = self
@@ -58,6 +61,20 @@ final class SensorFusionManager: NSObject, ObservableObject {
         locationManager.stopUpdatingLocation()
         motionManager.stopDeviceMotionUpdates()
         pedometer.stopUpdates()
+    }
+
+    // MARK: – Public reset
+    /// Clears all accumulators so a new run starts from zero.
+    func reset() {
+        fusedSpeedMps = 0
+        fusedDistanceMeters = 0
+        stepCount = 0
+        fusedLocation = nil
+        lastValidLocation = nil
+        lastLocationForDistance = nil
+        lastPedometerUpdate = nil
+        lastPedometerDistance = 0
+        stationaryCounter = 0
     }
 
     // MARK: – Core Motion
@@ -117,31 +134,31 @@ extension SensorFusionManager: CLLocationManagerDelegate {
         guard let loc = locations.last else { return }
         fusedLocation = loc
 
-        // Derive the most responsive speed estimate possible
-        var instantaneousSpeed = max(loc.speed, 0)
-        if instantaneousSpeed == 0, let last = lastValidLocation {
+        // Derive instantaneous speed: use doppler if valid, else distance over time
+        var rawSpeed = max(loc.speed, 0)
+        if rawSpeed == 0, let last = lastValidLocation {
             let dt = loc.timestamp.timeIntervalSince(last.timestamp)
             if dt > 0 {
-                instantaneousSpeed = loc.distance(from: last) / dt
+                rawSpeed = loc.distance(from: last) / dt
             }
         }
         lastValidLocation = loc
 
-        // Zero speed quickly when device deemed stationary ~1.5 s
-        if stationaryCounter > 75 { // 75 frames ≈ 1.5 s at 50 Hz
-            instantaneousSpeed = 0
+        // Zero quickly when device stationary (≈1 s at 50 Hz)
+        if stationaryCounter > 50 { rawSpeed = 0 }
+        if rawSpeed < 0.05 { rawSpeed = 0 }
+
+        // Exponential smoothing for latency/accuracy trade-off
+        let smoothed = speedFilterAlpha * rawSpeed + (1 - speedFilterAlpha) * fusedSpeedMps
+        fusedSpeedMps = smoothed
+
+        // Distance accumulate (only when horizAcc reasonable < 20 m)
+        if loc.horizontalAccuracy < 20 {
+            if let last = lastLocationForDistance {
+                fusedDistanceMeters += loc.distance(from: last)
+            }
+            lastLocationForDistance = loc
         }
-
-        // Ignore tiny jitters
-        if instantaneousSpeed < 0.05 { instantaneousSpeed = 0 }
-
-        fusedSpeedMps = instantaneousSpeed
-
-        // distance accumulate
-        if let last = lastLocationForDistance {
-            fusedDistanceMeters += loc.distance(from: last)
-        }
-        lastLocationForDistance = loc
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {

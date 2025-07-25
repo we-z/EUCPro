@@ -49,7 +49,6 @@ struct DragMeasurementView: View {
                     .padding(.horizontal)
             }
         }
-        .background(Color.black.opacity(0.95).ignoresSafeArea())
         .onAppear {
             LocationManager.shared.start()
             MotionManager.shared.start()

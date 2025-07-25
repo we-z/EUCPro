@@ -114,7 +114,6 @@ final class DragViewModel: ObservableObject, Identifiable {
     private func finish() {
         if finishedMetrics != nil { return }
         timerCancellable?.cancel()
-        stop()
         var metrics: [String: Double] = [
             "Elapsed": elapsed,
             "Distance_m": distance,
@@ -130,6 +129,8 @@ final class DragViewModel: ObservableObject, Identifiable {
                       speedData: speedPoints,
                       trackName: nil)
         DataStore.shared.add(run: run)
+        // stop location updates after saving
+        LocationManager.shared.stop()
     }
     
     // Called from UI stop button to save partial run and reset

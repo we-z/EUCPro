@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import CoreLocation
+import CoreMotion
 
 final class DragViewModel: ObservableObject, Identifiable {
     let id = UUID()
@@ -16,9 +17,9 @@ final class DragViewModel: ObservableObject, Identifiable {
     private var startTime: Date?
     private var startLocation: CLLocation?
     private var lastSampleLocation: CLLocation?
-    private var filteredSpeed: Double = 0 // m/s
-    private let smoothingFactor: Double = 0.2
+    // Removed filteredSpeed and smoothingFactor for real-time speed reporting
     private var speedPoints: [SpeedPoint] = []
+    private var recentAccelerationMagnitude: Double = 0
     private var cancellables = Set<AnyCancellable>()
     private var timerCancellable: AnyCancellable?
     
@@ -36,6 +37,7 @@ final class DragViewModel: ObservableObject, Identifiable {
                 self.elapsed = Date().timeIntervalSince(st)
             }
         subscribe()
+        subscribeMotion()
     }
     
     func reset() {
@@ -56,17 +58,29 @@ final class DragViewModel: ObservableObject, Identifiable {
             .store(in: &cancellables)
     }
     
+    private func subscribeMotion() {
+        MotionManager.shared.$userAcceleration
+            .sink { [weak self] acc in
+                let mag = sqrt(acc.x * acc.x + acc.y * acc.y + acc.z * acc.z)
+                self?.recentAccelerationMagnitude = mag
+            }
+            .store(in: &cancellables)
+    }
+    
     private func handle(location: CLLocation) {
         let mphFactor = 2.23694
         // Use Core Location's Doppler speed for simplicity; fallback to 0 if invalid (-1)
         let gpsSpeed = location.speed >= 0 ? location.speed : 0 // m/s
 
-        // Simple exponential smoothing to reduce jitter
-        filteredSpeed = smoothingFactor * gpsSpeed + (1 - smoothingFactor) * filteredSpeed
-        currentSpeed = filteredSpeed * mphFactor // mph
+        // Use GPS speed, but clamp to zero quickly if device is stationary per accelerometer
+        var displaySpeed = gpsSpeed * mphFactor // mph
+        if displaySpeed < 1.0 && recentAccelerationMagnitude < 0.02 { // ~0.02 g threshold
+            displaySpeed = 0
+        }
+        currentSpeed = displaySpeed
 
         // Debug logging
-        print(String(format: "GPS raw %.2f m/s (%.2f mph) | filtered %.2f mph | horizAcc %.1f m", gpsSpeed, gpsSpeed*mphFactor, currentSpeed, location.horizontalAccuracy))
+        print(String(format: "GPS raw %.2f m/s (%.2f mph) | horizAcc %.1f m", gpsSpeed, currentSpeed, location.horizontalAccuracy))
         let now = Date()
         
         let speedThreshold = 0.44704 // 1 mph in m/s
@@ -76,7 +90,7 @@ final class DragViewModel: ObservableObject, Identifiable {
                 startTime = now
                 startLocation = location
                 lastSampleLocation = location
-                speedPoints.append(SpeedPoint(timestamp: now, speed: filteredSpeed, distance: 0))
+                speedPoints.append(SpeedPoint(timestamp: now, speed: gpsSpeed, distance: 0))
 
                 // start high-freq timer for elapsed updates
                 timerCancellable = Timer.publish(every: 0.02, on: .main, in: .common)
@@ -95,10 +109,10 @@ final class DragViewModel: ObservableObject, Identifiable {
         if let startLocation {
             distance = location.distance(from: startLocation)
         }
-        speedPoints.append(SpeedPoint(timestamp: now, speed: filteredSpeed, distance: distance))
+        speedPoints.append(SpeedPoint(timestamp: now, speed: gpsSpeed, distance: distance))
         print(String(format: "Δdist %.2f m | total %.2f m", distance, distance))
         
-        if let targetSpeed = targetSpeed, filteredSpeed >= targetSpeed {
+        if let targetSpeed = targetSpeed, gpsSpeed >= targetSpeed {
             finish()
         }
         if let targetDistance = targetDistance, distance >= targetDistance {

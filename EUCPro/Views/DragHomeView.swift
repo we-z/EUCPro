@@ -17,7 +17,6 @@ struct DragHomeView: View {
                         .background(.thinMaterial)
                         .clipShape(RoundedRectangle(cornerRadius: 16))
                         .padding(.top)
-                        .shadow(radius: 3)
                         .animation(.spring(), value: "\(dragTargetSpeed)\(dragTargetDistance)")
                     if !dragRuns.isEmpty {
                         historySection

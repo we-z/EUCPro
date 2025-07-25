@@ -37,7 +37,7 @@ struct DragMeasurementView: View {
                 Spacer()
             }
             // Debug sensor info
-            VStack(alignment: .leading, spacing: 4) {
+            VStack {
                 Text(String(format: "Fused Speed: %.2f m/s (%.2f mph)", fusion.fusedSpeedMps, fusion.fusedSpeedMps*2.23694))
                 if let loc = fusion.fusedLocation {
                     Text(String(format: "Fused Lat: %.5f  Lon: %.5f", loc.coordinate.latitude, loc.coordinate.longitude))
@@ -47,7 +47,6 @@ struct DragMeasurementView: View {
                 Text("Steps: \(fusion.stepCount)")
             }
             .font(.caption)
-            .foregroundColor(.secondary)
             .padding(.horizontal)
             .padding(.bottom, 80)
             Button {

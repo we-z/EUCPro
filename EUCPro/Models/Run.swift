@@ -13,6 +13,13 @@ struct SpeedPoint: Codable, Identifiable {
     let distance: Double // meters
 }
 
+// New: acceleration magnitude samples (G)
+struct AccelPoint: Codable, Identifiable {
+    let id = UUID()
+    let timestamp: Date
+    let accel: Double // G
+}
+
 struct Run: Identifiable, Codable {
     let id: UUID
     let date: Date
@@ -20,6 +27,7 @@ struct Run: Identifiable, Codable {
     let title: String
     let metrics: [String: Double]
     let speedData: [SpeedPoint]
+    let accelData: [AccelPoint]?
     let trackName: String?
     
     init(date: Date = Date(),
@@ -27,6 +35,7 @@ struct Run: Identifiable, Codable {
          title: String,
          metrics: [String: Double],
          speedData: [SpeedPoint],
+         accelData: [AccelPoint]? = nil,
          trackName: String? = nil) {
         self.id = UUID()
         self.date = date
@@ -34,6 +43,7 @@ struct Run: Identifiable, Codable {
         self.title = title
         self.metrics = metrics
         self.speedData = speedData
+        self.accelData = accelData
         self.trackName = trackName
     }
 } 

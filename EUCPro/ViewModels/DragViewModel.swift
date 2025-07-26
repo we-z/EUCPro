@@ -23,6 +23,7 @@ final class DragViewModel: ObservableObject, Identifiable {
     private var lastSampleLocation: CLLocation?
     // Removed filteredSpeed and smoothingFactor for real-time speed reporting
     private var speedPoints: [SpeedPoint] = []
+    private var accelData: [AccelPoint] = []
     private var recentAccelerationMagnitude: Double = 0
     private var stationaryCounter: Int = 0 // counts motion frames below threshold
 
@@ -101,6 +102,7 @@ final class DragViewModel: ObservableObject, Identifiable {
                 guard let self else { return }
                 let mag = sqrt(acc.x * acc.x + acc.y * acc.y + acc.z * acc.z)
                 self.recentAccelerationMagnitude = mag
+                self.accelData.append(AccelPoint(timestamp: Date(), accel: mag))
 
                 // Simple stationary detector
                 if mag < 0.05 {
@@ -191,6 +193,7 @@ final class DragViewModel: ObservableObject, Identifiable {
                       title: "Drag " + DateFormatter.localizedString(from: Date(), dateStyle: .short, timeStyle: .short),
                       metrics: metrics,
                       speedData: speedPoints,
+                      accelData: accelData,
                       trackName: nil)
         DataStore.shared.add(run: run)
         // stop location updates after saving

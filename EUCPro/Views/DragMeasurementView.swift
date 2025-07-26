@@ -48,7 +48,6 @@ struct DragMeasurementView: View {
                             .foregroundColor(.secondary)
                     }
                 }
-                Spacer()
                 // Live sensor charts
             VStack(alignment: .leading, spacing: 16) {
                 Text("Acceleration (G)")
@@ -61,6 +60,8 @@ struct DragMeasurementView: View {
                     .interpolationMethod(.linear)
                 }
                 .frame(height: 120)
+                .chartXAxisLabel("Time (s)")
+                .chartYAxisLabel("Acceleration (G)")
 
                 Text("GPS Speed (\(unit.label))")
                     .font(.caption.bold())
@@ -72,6 +73,8 @@ struct DragMeasurementView: View {
                     .interpolationMethod(.linear)
                 }
                 .frame(height: 120)
+                .chartXAxisLabel("Time (s)")
+                .chartYAxisLabel("Speed (\(unit.label))")
             }
             .padding()
             Spacer()

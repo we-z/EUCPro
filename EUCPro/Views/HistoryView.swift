@@ -62,6 +62,16 @@ struct RunDetailView: View {
                         LineMark(x: .value("Distance", $0.distance), y: .value("Speed", $0.speed*3.6))
                     }.frame(height: 200)
                 }
+                if let acc = run.accelData, !acc.isEmpty {
+                    let baseTime = acc.first?.timestamp ?? run.date
+                    Chart(acc) {
+                        LineMark(x: .value("Time", $0.timestamp.timeIntervalSince(baseTime)),
+                                 y: .value("Accel", $0.accel))
+                    }
+                    .chartXAxisLabel("Time (s)")
+                    .chartYAxisLabel("Acceleration (G)")
+                    .frame(height: 200)
+                }
             }.padding()
         }
         .navigationTitle("Run Details")

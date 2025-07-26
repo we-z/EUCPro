@@ -20,13 +20,8 @@ final class SensorFusionManager: NSObject, ObservableObject {
     // MARK: – Private sensors
     private let motionManager = CMMotionManager()
     private let locationManager = CLLocationManager()
-    private let pedometer = CMPedometer()
 
     private var cancellables = Set<AnyCancellable>()
-
-    // Pedometer delta tracking
-    private var lastPedometerUpdate: Date?
-    private var lastPedometerDistance: Double = 0
 
     // MARK: – Integration state for dead-reckoning
     private var lastValidLocation: CLLocation?
@@ -56,13 +51,11 @@ final class SensorFusionManager: NSObject, ObservableObject {
         locationManager.startUpdatingHeading()
 
         startMotion()
-        startPedometer()
     }
 
     func stop() {
         locationManager.stopUpdatingLocation()
         motionManager.stopDeviceMotionUpdates()
-        pedometer.stopUpdates()
     }
 
     // MARK: – Public reset
@@ -74,8 +67,6 @@ final class SensorFusionManager: NSObject, ObservableObject {
         fusedLocation = nil
         lastValidLocation = nil
         lastLocationForDistance = nil
-        lastPedometerUpdate = nil
-        lastPedometerDistance = 0
         stationaryCounter = 0
         speedKF.reset()
         lastMotionTimestamp = nil
@@ -130,36 +121,6 @@ final class SensorFusionManager: NSObject, ObservableObject {
                 self.speedKF.reset()
                 self.fusedSpeedMps = 0
                 return
-            }
-        }
-    }
-
-    // MARK: – CMPedometer
-    private func startPedometer() {
-        guard CMPedometer.isDistanceAvailable() || CMPedometer.isStepCountingAvailable() else { return }
-        pedometer.startUpdates(from: Date()) { [weak self] data, error in
-            guard let self, let data else { return }
-            DispatchQueue.main.async {
-                self.stepCount = data.numberOfSteps.intValue
-                if let dist = data.distance?.doubleValue {
-                    self.fusedDistanceMeters = dist
-                    if let lastDist = self.lastPedometerDistance as Double? {
-                        let deltaD = dist - lastDist
-                        if deltaD >= 0 {
-                            let now = Date()
-                            if let lastT = self.lastPedometerUpdate {
-                                let dt = now.timeIntervalSince(lastT)
-                                if dt > 0.15 { // shorter threshold for more responsive updates
-                                    // Calculate indoor walking speed but don't overwrite GPS-derived fusedSpeedMps here;
-                                    // we'll expose it later as a separate metric if needed.
-                                    _ = deltaD / dt // m/s (computed but not stored; could be used for indoor metrics later)
-                                }
-                            }
-                            self.lastPedometerUpdate = now
-                            self.lastPedometerDistance = dist
-                        }
-                    }
-                }
             }
         }
     }

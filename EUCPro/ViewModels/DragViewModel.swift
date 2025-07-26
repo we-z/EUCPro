@@ -26,10 +26,7 @@ final class DragViewModel: ObservableObject, Identifiable {
     private var recentAccelerationMagnitude: Double = 0
     private var stationaryCounter: Int = 0 // counts motion frames below threshold
 
-    // Pedometer fallback when GPS is unreliable (indoor usage)
-    private let pedometer = CMPedometer()
-    private var pedometerDistance: Double = 0
-    private var pedometerSpeedMps: Double = 0
+    // (Removed pedometer fallback properties)
     private var cancellables = Set<AnyCancellable>()
     private var timerCancellable: AnyCancellable?
     
@@ -50,7 +47,7 @@ final class DragViewModel: ObservableObject, Identifiable {
         subscribe()
         subscribeFusion()
         subscribeMotion()
-        startPedometer()
+        // Pedometer support removed – no longer needed
         SensorFusionManager.shared.reset()
     }
     
@@ -115,23 +112,7 @@ final class DragViewModel: ObservableObject, Identifiable {
             .store(in: &cancellables)
     }
 
-    private func startPedometer() {
-        guard CMPedometer.isDistanceAvailable(), CMPedometer.isPaceAvailable() else { return }
-        pedometer.startUpdates(from: Date()) { [weak self] data, error in
-            guard let self, let data else { return }
-            DispatchQueue.main.async {
-                if let distance = data.distance?.doubleValue {
-                    self.pedometerDistance = distance
-                }
-                if let pace = data.currentPace?.doubleValue, pace > 0 {
-                    self.pedometerSpeedMps = 1.0 / pace // m/s
-                } else {
-                    self.pedometerSpeedMps = 0
-                }
-            }
-        }
-    }
-    
+    // Pedometer support removed – no longer needed
     private func handle(location: CLLocation) {
         let mphFactor = 2.23694
         // Use Core Location's Doppler speed for simplicity; fallback to 0 if invalid (-1)
@@ -180,8 +161,8 @@ final class DragViewModel: ObservableObject, Identifiable {
             gpsDistance = location.distance(from: startLocation)
         }
 
-        // Combine pedometer distance when larger (indoor, small movements)
-        distance = max(gpsDistance, pedometerDistance)
+        // Replace pedometer fallback with GPS distance only
+        distance = gpsDistance
 
         speedPoints.append(SpeedPoint(timestamp: now, speed: gpsSpeed, distance: distance))
         print(String(format: "Δdist %.2f m | total %.2f m", distance, distance))

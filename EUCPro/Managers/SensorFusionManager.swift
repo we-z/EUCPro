@@ -1,178 +1,112 @@
 import Foundation
-import CoreMotion
-import CoreLocation
 import Combine
-// No simd needed after removing custom integration
+import CoreLocation
+import CoreMotion
 
-/// Combines Core Motion sensors and Core Location to estimate position, speed, heading and steps both indoors and outdoors.
-/// NOTE: This is a simplified example – true sensor-fusion (e.g. extended Kalman filter) would be more sophisticated.
-final class SensorFusionManager: NSObject, ObservableObject {
+/// Performs lightweight sensor-fusion to provide a smooth, low-latency speed
+/// read-out that reacts quickly to acceleration yet rejects false motion caused
+/// by sensor noise or phone shaking. The class can be treated as a black box
+/// that emits `@Published` values on the main thread.
+final class SensorFusionManager: ObservableObject {
+    // MARK: – Public, observable properties
+    @Published private(set) var fusedSpeedMps: Double = 0           // metres / second
+    @Published private(set) var fusedDistanceMeters: Double = 0     // metres
+    @Published private(set) var fusedLocation: CLLocation?          // last GPS fix used in the fusion
+    @Published private(set) var fusedHeading: Double = 0            // degrees (0=N)
+    @Published private(set) var stepCount: Int = 0                  // very rough pedometer for debugging
+
+    // MARK: – Singleton
     static let shared = SensorFusionManager()
 
-    // MARK: – Published fused outputs
-    @Published private(set) var fusedLocation: CLLocation?
-    @Published private(set) var fusedSpeedMps: Double = 0 // metres / second
-    @Published private(set) var fusedHeading: Double = 0 // degrees
-    @Published private(set) var fusedOrientation: CMAttitude?
-    @Published private(set) var stepCount: Int = 0
-    @Published private(set) var fusedDistanceMeters: Double = 0
-
-    // MARK: – Private sensors
-    private let motionManager = CMMotionManager()
-    private let locationManager = CLLocationManager()
+    // MARK: – Private helpers
+    private let location = LocationManager.shared
+    private let motion    = MotionManager.shared
+    private let estimator = SpeedEstimator()
 
     private var cancellables = Set<AnyCancellable>()
+    private var stationaryFrames = 0
 
-    // MARK: – Integration state for dead-reckoning
-    private var lastValidLocation: CLLocation?
-    private var lastLocationForDistance: CLLocation?
-    private var stationaryCounter: Int = 0 // counts consecutive low-accel frames
-    private let stationaryThresholdFrames = 25 // ≈0.5 s at 50 Hz
-    private let accelQuietThreshold = 0.04 // g
-
-    private var speedKF = SpeedEstimator()
-    private var lastMotionTimestamp: TimeInterval? = nil
-
-    private override init() {
-        super.init()
-        locationManager.delegate = self
-        locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
-        locationManager.activityType = .fitness
-        motionManager.deviceMotionUpdateInterval = 1.0 / 50.0
+    private init() {
+        subscribeSensors()
     }
 
-    // MARK: – Public control
+    // MARK: – Lifecycle helpers
     func start() {
-        guard CLLocationManager.locationServicesEnabled() else { return }
-        if locationManager.authorizationStatus == .notDetermined {
-            locationManager.requestWhenInUseAuthorization()
-        }
-        locationManager.startUpdatingLocation()
-        locationManager.startUpdatingHeading()
-
-        startMotion()
+        location.start()
+        motion.start()
     }
 
     func stop() {
-        locationManager.stopUpdatingLocation()
-        motionManager.stopDeviceMotionUpdates()
+        location.stop()
+        motion.stop()
     }
 
-    // MARK: – Public reset
-    /// Clears all accumulators so a new run starts from zero.
     func reset() {
+        estimator.reset()
         fusedSpeedMps = 0
         fusedDistanceMeters = 0
-        stepCount = 0
         fusedLocation = nil
-        lastValidLocation = nil
-        lastLocationForDistance = nil
-        stationaryCounter = 0
-        speedKF.reset()
-        lastMotionTimestamp = nil
+        fusedHeading = 0
+        stepCount = 0
+        stationaryFrames = 0
     }
 
-    // MARK: – Core Motion
-    private func startMotion() {
-        motionManager.startDeviceMotionUpdates(to: .main) { [weak self] motion, error in
-            guard let self, let motion else { return }
-            self.fusedOrientation = motion.attitude
-            // Stationary detector – increment when negligible user acceleration
-            let mag = sqrt(motion.userAcceleration.x * motion.userAcceleration.x +
-                           motion.userAcceleration.y * motion.userAcceleration.y +
-                           motion.userAcceleration.z * motion.userAcceleration.z)
-            if mag < self.accelQuietThreshold {
-                self.stationaryCounter += 1
-            } else {
-                self.stationaryCounter = 0
+    // MARK: – Sensor subscription
+    private func subscribeSensors() {
+        // `CombineLatest3` waits until each publisher has produced at least one
+        // value before emitting. That is perfect here – we want a consistent
+        // sensor frame containing location (may be `nil`) and the two inertial
+        // measurements.
+        location.$currentLocation
+            .combineLatest(motion.$userAcceleration, motion.$rotationRate)
+            .receive(on: DispatchQueue.global(qos: .utility))
+            .sink { [weak self] locationOpt, acceleration, rotation in
+                guard let self else { return }
+                self.processFrame(location: locationOpt,
+                                  userAcc: acceleration,
+                                  rotation: rotation)
             }
+            .store(in: &cancellables)
+    }
 
-            // Project user acceleration onto the current heading to obtain signed forward accel
-            let ua = motion.userAcceleration // in g units
-            let R = motion.attitude.rotationMatrix
-            // Transform body-frame accel to navigation frame (NED). Only horizontal components used.
-            let accX = R.m11 * ua.x + R.m12 * ua.y + R.m13 * ua.z
-            let accY = R.m21 * ua.x + R.m22 * ua.y + R.m23 * ua.z
-            let headingRad = self.fusedHeading * Double.pi / 180.0
-            // Forward component along heading (signed). Units: g
-            let forwardG =  accX * cos(headingRad) + accY * sin(headingRad)
+    // MARK: – Frame processing
+    private func processFrame(location: CLLocation?,
+                              userAcc: CMAcceleration,
+                              rotation: CMRotationRate) {
+        let now = Date().timeIntervalSince1970
+        let gpsSpeed = (location?.speed ?? -1) >= 0 ? location?.speed : nil // ignore -1 (invalid)
 
-            // Ignore tiny acceleration to suppress noise
-            let forwardMps2: Double
-            if abs(forwardG) < self.accelQuietThreshold {
-                forwardMps2 = 0
-            } else {
-                forwardMps2 = forwardG * 9.81 // convert g → m/s²
+        // Feed everything through the estimator (dead-reckoning + GPS fusion).
+        let (spd, dist) = estimator.processSample(timestamp: now,
+                                                  gpsSpeed: gpsSpeed,
+                                                  acceleration: userAcc,
+                                                  rotationRate: rotation)
+
+        // Simple stationary detector to clamp tiny residuals to exactly 0.
+        let accMag = sqrt(userAcc.x * userAcc.x + userAcc.y * userAcc.y + userAcc.z * userAcc.z)
+        let rotMag = sqrt(rotation.x * rotation.x + rotation.y * rotation.y + rotation.z * rotation.z)
+        let isStationaryCandidate = accMag < 0.03 && rotMag < 0.05 && (gpsSpeed ?? 0) < 0.2
+        if isStationaryCandidate {
+            stationaryFrames += 1
+            if stationaryFrames > 20 { // ≈0.4 s at 50 Hz
+                estimator.reset()
             }
+        } else {
+            stationaryFrames = 0
+        }
 
-            let timestamp = motion.timestamp
-            if let lastTs = self.lastMotionTimestamp {
-                let dt = timestamp - lastTs
-                self.speedKF.predict(accelMeasured: forwardMps2, dt: dt)
-                var predicted = self.speedKF.speed
-                if predicted < 0 { predicted = 0 }
-                // Hard-cap to 25 m/s (≈90 km/h) to suppress runaway drift.
-                if predicted > 25 { predicted = 25 }
-                self.fusedSpeedMps = predicted
-            }
-            self.lastMotionTimestamp = timestamp
-            // Instant zeroing when device is at rest for consecutive frames
-            if self.stationaryCounter >= self.stationaryThresholdFrames {
-                self.speedKF.reset()
-                self.fusedSpeedMps = 0
-                return
+        // Step detection (very crude – sufficient for dev-time sanity checks)
+        let stepHit = userAcc.z > 1.2
+
+        // Marshal output back to the main thread so SwiftUI updates smoothly.
+        DispatchQueue.main.async {
+            self.fusedSpeedMps      = spd
+            self.fusedDistanceMeters = dist
+            if stepHit { self.stepCount += 1 }
+            if let loc = location {
+                self.fusedLocation = loc
+                if loc.course >= 0 { self.fusedHeading = loc.course }
             }
         }
     }
-
-    // MARK: – Helpers
-    // No offset function needed now
 }
-
-// MARK: – CLLocationManagerDelegate
-extension SensorFusionManager: CLLocationManagerDelegate {
-    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let loc = locations.last else { return }
-        fusedLocation = loc
-
-        // Derive instantaneous speed: use doppler if valid, else distance over time
-        var rawSpeed = max(loc.speed, 0)
-        if rawSpeed == 0, let last = lastValidLocation {
-            let dt = loc.timestamp.timeIntervalSince(last.timestamp)
-            if dt > 0 {
-                rawSpeed = loc.distance(from: last) / dt
-            }
-        }
-        lastValidLocation = loc
-
-        // Supply GPS update to Kalman Filter
-        speedKF.update(gpsSpeed: rawSpeed)
-
-        // Overwrite rawSpeed with filter estimate for further processing
-        rawSpeed = speedKF.speed
-
-        if stationaryCounter >= stationaryThresholdFrames || rawSpeed < 0.2 {
-            rawSpeed = 0
-            speedKF.reset()
-        }
-
-        rawSpeed = max(0, min(rawSpeed, 25))
-        fusedSpeedMps = rawSpeed
-
-        // Distance accumulate (only when horizAcc reasonable < 20 m)
-        if loc.horizontalAccuracy < 20 {
-            if let last = lastLocationForDistance {
-                fusedDistanceMeters += loc.distance(from: last)
-            }
-            lastLocationForDistance = loc
-        }
-    }
-
-    func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
-        fusedHeading = newHeading.trueHeading >= 0 ? newHeading.trueHeading : newHeading.magneticHeading
-    }
-
-    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        print("SensorFusionManager location error: \(error.localizedDescription)")
-    }
-} 

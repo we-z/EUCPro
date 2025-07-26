@@ -80,14 +80,16 @@ final class SensorFusionManager: ObservableObject {
         if let loc = location {
             // 1) Only accept when Core-Location reports a valid Doppler speed (>=0)
             if loc.speed >= 0 {
-                let hdopOK = loc.horizontalAccuracy >= 0 && loc.horizontalAccuracy < 15 // metres
-                // 2) Hard floor on reported speed – tiny residuals are treated as zero
+                let hdopOK = loc.horizontalAccuracy >= 0 && loc.horizontalAccuracy < 10 // metres – tighter accuracy
+                // 2) Hard floor on reported speed – treat almost-zero as zero
                 let speedOK = loc.speed > 0.2 // ~0.4 mph
 
-                // 3) Reject improbable jumps when the device shows no acceleration
+                // 3) Reject improbable jumps when the device shows no acceleration.
                 let prevSpeed = fusedSpeedMps
                 let accMagInstant = sqrt(userAcc.x * userAcc.x + userAcc.y * userAcc.y + userAcc.z * userAcc.z)
-                let unrealisticJump = abs(loc.speed - prevSpeed) > 3.0 && accMagInstant < 0.05 // >6.7 mph step with <0.05 g
+                let speedDelta = abs(loc.speed - prevSpeed)
+                // New rule: any jump >1.0 m/s (≈2.2 mph) requires noticeable acceleration (>0.1 g)
+                let unrealisticJump = speedDelta > 1.0 && accMagInstant < 0.1
 
                 if hdopOK && speedOK && !unrealisticJump {
                     gpsSpeed = loc.speed

@@ -73,13 +73,27 @@ final class DragViewModel: ObservableObject, Identifiable {
     }
     
     private func subscribeFusion() {
-        // Map fused speed to currentSpeed (m/s)
-        fusionManager.$fusedSpeedMps
+        // Combine fused speed with raw GPS speed – GPS has priority when valid.
+        Publishers.CombineLatest(fusionManager.$fusedSpeedMps,
+                                 locationManager.$currentLocation)
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] mps in
+            .sink { [weak self] fusedMps, locationOpt in
                 guard let self else { return }
-                self.currentSpeed = mps
-                let mph = mps * 2.23694
+
+                var displayMps = fusedMps
+
+                if let loc = locationOpt {
+                    let gpsMps = max(0, loc.speed)
+                    let accuracyOk = loc.horizontalAccuracy >= 0 && loc.horizontalAccuracy < 25 // relax to 25 m
+                    let fusedLow = fusedMps < 0.5 // about 1 mph
+                    if accuracyOk && gpsMps > 0.05 && (fusedLow || gpsMps > fusedMps) {
+                        displayMps = gpsMps
+                    }
+                }
+
+                self.currentSpeed = displayMps
+
+                let mph = displayMps * 2.23694
                 if mph > self.peakSpeedMph { self.peakSpeedMph = mph }
             }
             .store(in: &cancellables)

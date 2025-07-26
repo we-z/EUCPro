@@ -27,8 +27,8 @@ final class SpeedEstimator {
     private let accelThreshold: Double = 0.08
 
     /// Variance of the accelerometer-derived speed change per second² (process noise).
-    /// Larger values: trust acceleration less. Unit: (m/s)² per (m/s²·s)² ⇒ simplified below.
-    private let processNoiseVariance: Double = 1.0
+    /// Larger value means we trust acceleration less → Kalman leans on GPS more.
+    private let processNoiseVariance: Double = 5.0
 
     /// Variance of GPS speed measurement noise (m/s)². Typical consumer GPS speed σ ≈ 0.5 m/s.
     private let gpsMeasurementVariance: Double = 0.25
@@ -40,6 +40,10 @@ final class SpeedEstimator {
     /// device is *really* accelerating in a persistent direction rather than just
     /// experiencing a one-off spike.
     private var consecutiveHighAccFrames: Int = 0
+
+    /// Gain applied to net acceleration when integrating into speed. < 1 to reduce
+    /// tendency to overshoot.
+    private let accelIntegrationGain: Double = 0.35
 
     /// Frames in a row that satisfy strict stationary criteria.
     private var stationaryFrames: Int = 0
@@ -111,10 +115,10 @@ final class SpeedEstimator {
         }
 
         var controlAccel: Double = 0 // (m/s²)
-        if consecutiveHighAccFrames >= 2 {
+        if consecutiveHighAccFrames >= 3 { // need ~60 ms of sustained acceleration
             // Subtract the threshold so we integrate *excess* acceleration –
             // anything below the threshold is treated as zero.
-            controlAccel = (accMag - accelThreshold) * 9.80665
+            controlAccel = (accMag - accelThreshold) * 9.80665 * accelIntegrationGain
         }
 
         // --- Kalman PREDICT step ---
@@ -144,7 +148,7 @@ final class SpeedEstimator {
         }
 
         // 4) Clip negatives & jitter.
-        if abs(speedUpdated) < 0.03 { speedUpdated = 0 }
+        if abs(speedUpdated) < 0.05 { speedUpdated = 0 }
 
         // Commit
         speed = speedUpdated

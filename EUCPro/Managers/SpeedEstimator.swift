@@ -19,11 +19,19 @@ final class SpeedEstimator {
     /// `gpsWeight = 0.25` means the new solution is 25 % GPS and 75 % inertial.
     private let gpsWeight: Double
     /// Minimum acceleration (in g) that we treat as genuine vehicle acceleration.
-    private let accelThreshold: Double = 0.05
-    /// Small decay to slowly bleed off velocity drift when no acceleration present.
-    private let driftDecay: Double = 0.985
+    /// Increased to better reject sensor noise and micro-vibrations.
+    private let accelThreshold: Double = 0.08
 
-    init(gpsWeight: Double = 0.25) {
+    /// Small decay to slowly bleed off velocity drift when no acceleration present.
+    /// Lower value → quicker bleed-off.
+    private let driftDecay: Double = 0.95
+
+    /// Counts successive frames with significant acceleration. Helps to ensure the
+    /// device is *really* accelerating in a persistent direction rather than just
+    /// experiencing a one-off spike.
+    private var consecutiveHighAccFrames: Int = 0
+
+    init(gpsWeight: Double = 0.6) {
         self.gpsWeight = gpsWeight
     }
 
@@ -66,9 +74,23 @@ final class SpeedEstimator {
                           rotationRate.y * rotationRate.y +
                           rotationRate.z * rotationRate.z)
 
-        if accMag > accelThreshold && rotMag < 3.0 { // rad/s ~ 170°/s
-            // userAcceleration units are in g (9.81 m/s² per unit).
-            speed += accMag * 9.80665 * dt
+        // 1a) Track consecutive frames of "good" acceleration so that fleeting
+        // spikes (e.g. a quick phone tap) don't integrate into large speed.
+        if accMag > accelThreshold && rotMag < 2.0 {
+            consecutiveHighAccFrames += 1
+        } else {
+            consecutiveHighAccFrames = 0
+        }
+
+        // 1b) Only integrate when we have seen at least 2 successive frames
+        // above the threshold (≈40 ms at 50 Hz). This is long enough to filter
+        // out most impulse noise yet short enough to capture genuine vehicle
+        // acceleration.
+        if consecutiveHighAccFrames >= 2 {
+            // Subtract the threshold so we integrate *excess* acceleration –
+            // anything below the threshold is treated as zero.
+            let netAcc = (accMag - accelThreshold) * 9.80665 // m/s²
+            speed += netAcc * dt
         } else {
             // Mild exponential decay prevents speed drifting forever.
             speed *= pow(driftDecay, dt * 50) // normalise to 50 Hz baseline
@@ -80,7 +102,7 @@ final class SpeedEstimator {
         }
 
         // 3) Clip unphysical negatives and small jitter.
-        if speed < 0.05 { speed = 0 } // ≈0.1 mph
+        if speed < 0.03 { speed = 0 } // ≈0.07 mph
 
         // 4) Integrate distance.
         distance += speed * dt

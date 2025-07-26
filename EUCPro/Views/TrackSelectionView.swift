@@ -47,25 +47,43 @@ struct TrackSelectionView: View {
 
 struct AddTrackView: View {
     @Environment(\.dismiss) var dismiss
+    // Observe the shared location manager so the UI updates as soon as a fix is obtained
+    @ObservedObject private var locationManager = LocationManager.shared
     @State private var name: String = ""
-    @State private var status: String = ""
+
     var body: some View {
         Form {
-            TextField("Track Name", text: $name)
-            Button("Use Current Location as Start/Finish") {
-                guard let loc = LocationManager.shared.currentLocation else {
-                    status = "Location not available"
-                    return
-                }
-                let coordinate = Coordinate(latitude: loc.coordinate.latitude, longitude: loc.coordinate.longitude)
-                let track = Track(name: name, startFinish: coordinate)
-                DataStore.shared.add(track: track)
-                dismiss()
+            Section(header: Text("Track Details")) {
+                TextField("Track Name", text: $name)
             }
-            if !status.isEmpty {
-                Text(status).foregroundColor(.red)
+
+            Section {
+                if let loc = locationManager.currentLocation {
+                    Button {
+                        let coordinate = Coordinate(latitude: loc.coordinate.latitude,
+                                                    longitude: loc.coordinate.longitude)
+                        let trackName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let finalName = trackName.isEmpty ? "Unnamed Track" : trackName
+                        let track = Track(name: finalName, startFinish: coordinate)
+                        DataStore.shared.add(track: track)
+                        dismiss()
+                    } label: {
+                        Label("Use Current Location as Start/Finish", systemImage: "mappin.and.ellipse")
+                    }
+                    // Disable the button until the user provides a name
+                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                } else {
+                    HStack {
+                        ProgressView()
+                        Text("Acquiring GPS location…")
+                    }
+                }
             }
         }
         .navigationTitle("New Track")
+        .onAppear {
+            // Ensure permission is requested if it hasn't been yet
+            locationManager.requestAuthorization()
+        }
     }
 } 

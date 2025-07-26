@@ -8,22 +8,32 @@ import CoreMotion
 /// solution bounded while using inertial sensors to smooth the gaps between
 /// GPS samples and to detect when the device is truly stationary.
 final class SpeedEstimator {
-    /// Latest estimated speed (m/s)
+    // MARK: – Kalman filter state (1-D velocity model)
+    /// Current best estimate of speed (m/s)
     private var speed: Double = 0
+    /// Variance (square of standard deviation) of the current speed estimate.
+    private var speedVariance: Double = 4 // (m/s)² – start with fairly high uncertainty
+
+    // MARK: – Public outputs
     /// Integrated distance travelled (m)
     private(set) var distance: Double = 0
-    /// Timestamp of the previous sensor frame (s)
+
+    // MARK: – Time bookkeeping
     private var lastTimestamp: TimeInterval?
 
-    /// Weighting factor applied to GPS whenever a fresh fix is available.
-    /// `gpsWeight = 0.25` means the new solution is 25 % GPS and 75 % inertial.
-    private let gpsWeight: Double
+    // MARK: – Noise / filter tuning constants
     /// Minimum acceleration (in g) that we treat as genuine vehicle acceleration.
     /// Increased to better reject sensor noise and micro-vibrations.
     private let accelThreshold: Double = 0.08
 
-    /// Small decay to slowly bleed off velocity drift when no acceleration present.
-    /// Lower value → quicker bleed-off.
+    /// Variance of the accelerometer-derived speed change per second² (process noise).
+    /// Larger values: trust acceleration less. Unit: (m/s)² per (m/s²·s)² ⇒ simplified below.
+    private let processNoiseVariance: Double = 1.0
+
+    /// Variance of GPS speed measurement noise (m/s)². Typical consumer GPS speed σ ≈ 0.5 m/s.
+    private let gpsMeasurementVariance: Double = 0.25
+
+    /// Small decay to slowly bleed off velocity drift when no acceleration *or* GPS updates arrive.
     private let driftDecay: Double = 0.95
 
     /// Counts successive frames with significant acceleration. Helps to ensure the
@@ -31,9 +41,10 @@ final class SpeedEstimator {
     /// experiencing a one-off spike.
     private var consecutiveHighAccFrames: Int = 0
 
-    init(gpsWeight: Double = 0.6) {
-        self.gpsWeight = gpsWeight
-    }
+    /// Frames in a row that satisfy strict stationary criteria.
+    private var stationaryFrames: Int = 0
+
+    init() {}
 
     /// Resets the estimator to an initial zero-state.
     func reset() {
@@ -74,6 +85,23 @@ final class SpeedEstimator {
                           rotationRate.y * rotationRate.y +
                           rotationRate.z * rotationRate.z)
 
+        // --- Stationary detection (Zero-velocity update) ---
+        let isStationaryCandidate = accMag < 0.03 && rotMag < 0.05 && (gpsSpeed ?? 0) < 0.2
+        if isStationaryCandidate {
+            stationaryFrames += 1
+        } else {
+            stationaryFrames = 0
+        }
+
+        // If the device has been stationary for >0.3 s (≈15 frames at 50 Hz),
+        // force the Kalman state to a perfect zero with very small variance.
+        if stationaryFrames > 15 {
+            speed = 0
+            speedVariance = 0.01
+            // We still update timestamp & return distance unchanged.
+            return (speed, distance)
+        }
+
         // 1a) Track consecutive frames of "good" acceleration so that fleeting
         // spikes (e.g. a quick phone tap) don't integrate into large speed.
         if accMag > accelThreshold && rotMag < 2.0 {
@@ -82,29 +110,47 @@ final class SpeedEstimator {
             consecutiveHighAccFrames = 0
         }
 
-        // 1b) Only integrate when we have seen at least 2 successive frames
-        // above the threshold (≈40 ms at 50 Hz). This is long enough to filter
-        // out most impulse noise yet short enough to capture genuine vehicle
-        // acceleration.
+        var controlAccel: Double = 0 // (m/s²)
         if consecutiveHighAccFrames >= 2 {
             // Subtract the threshold so we integrate *excess* acceleration –
             // anything below the threshold is treated as zero.
-            let netAcc = (accMag - accelThreshold) * 9.80665 // m/s²
-            speed += netAcc * dt
-        } else {
-            // Mild exponential decay prevents speed drifting forever.
-            speed *= pow(driftDecay, dt * 50) // normalise to 50 Hz baseline
+            controlAccel = (accMag - accelThreshold) * 9.80665
         }
 
-        // 2) Fuse with GPS when available.
+        // --- Kalman PREDICT step ---
+        // State transition: v_k = v_(k-1) + a * dt
+        let speedPred = speed + controlAccel * dt
+        // Error covariance prediction: P_k = P_(k-1) + Q
+        // Scale Q by dt² since integration of acceleration (m/s²) over dt gives speed.
+        let q = processNoiseVariance * dt * dt
+        var speedVarPred = speedVariance + q
+
+        var speedUpdated = speedPred
+
+        // --- Kalman UPDATE step (only if GPS available) ---
         if let g = gpsSpeed, g >= 0 {
-            speed = gpsWeight * g + (1.0 - gpsWeight) * speed
+            let r = gpsMeasurementVariance
+            let innovation = g - speedPred
+            let innovationVar = speedVarPred + r
+            let kalmanGain = speedVarPred / innovationVar
+
+            speedUpdated = speedPred + kalmanGain * innovation
+            speedVarPred = (1 - kalmanGain) * speedVarPred
         }
 
-        // 3) Clip unphysical negatives and small jitter.
-        if speed < 0.03 { speed = 0 } // ≈0.07 mph
+        // 3) Optional bleed-off when *neither* control input nor GPS updates are present.
+        if controlAccel == 0 && gpsSpeed == nil {
+            speedUpdated *= pow(driftDecay, dt * 50)
+        }
 
-        // 4) Integrate distance.
+        // 4) Clip negatives & jitter.
+        if abs(speedUpdated) < 0.03 { speedUpdated = 0 }
+
+        // Commit
+        speed = speedUpdated
+        speedVariance = max(speedVarPred, 0.0001) // keep strictly positive
+
+        // 5) Integrate distance.
         distance += speed * dt
         return (speed, distance)
     }

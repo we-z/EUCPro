@@ -74,8 +74,27 @@ final class SensorFusionManager: ObservableObject {
                               userAcc: CMAcceleration,
                               rotation: CMRotationRate) {
         let now = Date().timeIntervalSince1970
-        let gpsSpeed = (location?.speed ?? -1) >= 0 ? location?.speed : nil // ignore -1 (invalid)
+        // MARK: – GPS validation & noise suppression
+        // Drop GPS fixes that are likely spurious before they contaminate the estimator.
+        var gpsSpeed: Double? = nil
+        if let loc = location {
+            // 1) Only accept when Core-Location reports a valid Doppler speed (>=0)
+            if loc.speed >= 0 {
+                let hdopOK = loc.horizontalAccuracy >= 0 && loc.horizontalAccuracy < 15 // metres
+                // 2) Hard floor on reported speed – tiny residuals are treated as zero
+                let speedOK = loc.speed > 0.2 // ~0.4 mph
 
+                // 3) Reject improbable jumps when the device shows no acceleration
+                let prevSpeed = fusedSpeedMps
+                let accMagInstant = sqrt(userAcc.x * userAcc.x + userAcc.y * userAcc.y + userAcc.z * userAcc.z)
+                let unrealisticJump = abs(loc.speed - prevSpeed) > 3.0 && accMagInstant < 0.05 // >6.7 mph step with <0.05 g
+
+                if hdopOK && speedOK && !unrealisticJump {
+                    gpsSpeed = loc.speed
+                }
+            }
+        }
+        
         // Feed everything through the estimator (dead-reckoning + GPS fusion).
         let (spd, dist) = estimator.processSample(timestamp: now,
                                                   gpsSpeed: gpsSpeed,

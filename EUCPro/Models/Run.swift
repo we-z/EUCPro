@@ -29,6 +29,8 @@ struct Run: Identifiable, Codable {
     let speedData: [SpeedPoint]
     let accelData: [AccelPoint]?
     let trackName: String?
+    // Optional array of coordinates representing the route path (for lap sessions)
+    let route: [Coordinate]?
     
     init(date: Date = Date(),
          type: RunType,
@@ -36,7 +38,8 @@ struct Run: Identifiable, Codable {
          metrics: [String: Double],
          speedData: [SpeedPoint],
          accelData: [AccelPoint]? = nil,
-         trackName: String? = nil) {
+         trackName: String? = nil,
+         route: [Coordinate]? = nil) {
         self.id = UUID()
         self.date = date
         self.type = type
@@ -45,5 +48,6 @@ struct Run: Identifiable, Codable {
         self.speedData = speedData
         self.accelData = accelData
         self.trackName = trackName
+        self.route = route
     }
 } 

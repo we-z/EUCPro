@@ -15,6 +15,8 @@ final class LapViewModel: ObservableObject, Identifiable {
     private var cancellables = Set<AnyCancellable>()
     private var speedPoints: [SpeedPoint] = []
     private var timerCancellable: AnyCancellable?
+    // Collect route coordinates for mapping
+    private var route: [Coordinate] = []
     
     init(track: Track) {
         self.track = track
@@ -65,6 +67,9 @@ final class LapViewModel: ObservableObject, Identifiable {
         if lastCrossTime != nil {
             let distance = location.distance(from: startLocation)
             speedPoints.append(SpeedPoint(timestamp: Date(), speed: location.speed, distance: distance))
+            // Append coordinate to route
+            route.append(Coordinate(latitude: location.coordinate.latitude,
+                                    longitude: location.coordinate.longitude))
         }
     }
     
@@ -88,7 +93,8 @@ final class LapViewModel: ObservableObject, Identifiable {
                       title: track.name + " " + DateFormatter.localizedString(from: Date(), dateStyle: .short, timeStyle: .short),
                       metrics: metrics,
                       speedData: speedPoints,
-                      trackName: track.name)
+                      trackName: track.name,
+                      route: route)
         DataStore.shared.add(run: run)
     }
 } 

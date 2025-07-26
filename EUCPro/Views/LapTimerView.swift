@@ -4,13 +4,13 @@ import Charts
 struct LapTimerView: View {
     @ObservedObject var viewModel: LapViewModel
     @Environment(\.dismiss) private var dismiss
-    @AppStorage("speedUnit") private var speedUnitRaw: String = SpeedUnit.mph.rawValue
+    @AppStorage("speedUnit") private var speedUnitRaw: String = SpeedUnit.kmh.rawValue
     private var unit: SpeedUnit { SpeedUnit(rawValue: speedUnitRaw) ?? .mph }
     var body: some View {
         ZStack(alignment: .bottom) {
             VStack(spacing: 28) {
                 Spacer()
-                Text(String(format: "%.1f", unit == .mph ? viewModel.currentSpeed : viewModel.currentSpeed * 1.60934))
+                Text(String(format: "%.1f", unit.convert(mps: viewModel.currentSpeed)))
                     .font(.system(size: 100, weight: .heavy, design: .rounded))
                     .monospacedDigit()
                     .animation(.easeOut(duration: 0.15), value: viewModel.currentSpeed)

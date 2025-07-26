@@ -4,14 +4,14 @@ import CoreLocation
 struct DragMeasurementView: View {
     @ObservedObject var viewModel: DragViewModel
     @Environment(\.dismiss) private var dismiss
-    @AppStorage("speedUnit") private var speedUnitRaw: String = SpeedUnit.mph.rawValue
+    @AppStorage("speedUnit") private var speedUnitRaw: String = SpeedUnit.kmh.rawValue
     private var unit: SpeedUnit { SpeedUnit(rawValue: speedUnitRaw) ?? .mph }
     @StateObject private var fusion = SensorFusionManager.shared
     var body: some View {
         ZStack(alignment: .bottom) {
             VStack(spacing: 32) {
                 Spacer()
-                Text(String(format: "%.1f", unit == .mph ? viewModel.currentSpeed : viewModel.currentSpeed * 1.60934))
+                Text(String(format: "%.1f", unit.convert(mps: viewModel.currentSpeed)))
                     .font(.system(size: 180))
                     .monospacedDigit()
                 Text(unit.label.uppercased())

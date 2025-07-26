@@ -75,13 +75,13 @@ final class DragViewModel: ObservableObject, Identifiable {
     }
     
     private func subscribeFusion() {
-        // Map fused speed to currentSpeed (mph)
+        // Map fused speed to currentSpeed (m/s)
         fusionManager.$fusedSpeedMps
             .receive(on: DispatchQueue.main)
             .sink { [weak self] mps in
                 guard let self else { return }
+                self.currentSpeed = mps
                 let mph = mps * 2.23694
-                self.currentSpeed = mph
                 if mph > self.peakSpeedMph { self.peakSpeedMph = mph }
             }
             .store(in: &cancellables)
@@ -148,8 +148,8 @@ final class DragViewModel: ObservableObject, Identifiable {
             peakSpeedMph = internalSpeedMph
         }
 
-        // Debug logging
-        print(String(format: "GPS raw %.2f m/s (%.2f mph) | horizAcc %.1f m", gpsSpeed, currentSpeed, location.horizontalAccuracy))
+        // Debug logging (currentSpeed now in m/s)
+        print(String(format: "GPS raw %.2f m/s | fused %.2f m/s | horizAcc %.1f m", gpsSpeed, currentSpeed, location.horizontalAccuracy))
         let now = Date()
         
         let speedThreshold = 0.44704 // 1 mph in m/s

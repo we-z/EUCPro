@@ -95,11 +95,34 @@ final class SensorFusionManager: NSObject, ObservableObject {
             } else {
                 self.stationaryCounter = 0
             }
+
+            // Project user acceleration onto the current heading to obtain signed forward accel
+            let ua = motion.userAcceleration // in g units
+            let R = motion.attitude.rotationMatrix
+            // Transform body-frame accel to navigation frame (NED). Only horizontal components used.
+            let accX = R.m11 * ua.x + R.m12 * ua.y + R.m13 * ua.z
+            let accY = R.m21 * ua.x + R.m22 * ua.y + R.m23 * ua.z
+            let headingRad = self.fusedHeading * Double.pi / 180.0
+            // Forward component along heading (signed). Units: g
+            let forwardG =  accX * cos(headingRad) + accY * sin(headingRad)
+
+            // Ignore tiny acceleration to suppress noise
+            let forwardMps2: Double
+            if abs(forwardG) < self.accelQuietThreshold {
+                forwardMps2 = 0
+            } else {
+                forwardMps2 = forwardG * 9.81 // convert g → m/s²
+            }
+
             let timestamp = motion.timestamp
             if let lastTs = self.lastMotionTimestamp {
                 let dt = timestamp - lastTs
-                self.speedKF.predict(accelMeasured: mag, dt: dt)
-                self.fusedSpeedMps = self.speedKF.speed
+                self.speedKF.predict(accelMeasured: forwardMps2, dt: dt)
+                var predicted = self.speedKF.speed
+                if predicted < 0 { predicted = 0 }
+                // Hard-cap to 25 m/s (≈90 km/h) to suppress runaway drift.
+                if predicted > 25 { predicted = 25 }
+                self.fusedSpeedMps = predicted
             }
             self.lastMotionTimestamp = timestamp
             // Instant zeroing when device is at rest for consecutive frames
@@ -172,6 +195,7 @@ extension SensorFusionManager: CLLocationManagerDelegate {
             speedKF.reset()
         }
 
+        rawSpeed = max(0, min(rawSpeed, 25))
         fusedSpeedMps = rawSpeed
 
         // Distance accumulate (only when horizAcc reasonable < 20 m)

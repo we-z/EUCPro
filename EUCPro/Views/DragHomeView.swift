@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct DragHomeView: View {
-    @AppStorage("speedUnit") private var speedUnitRaw: String = SpeedUnit.mph.rawValue
+    @AppStorage("speedUnit") private var speedUnitRaw: String = SpeedUnit.kmh.rawValue
     @State private var dragTargetSpeed: Int = 40
     @State private var dragTargetDistance: String = ""
     @State private var showRun = false
@@ -49,8 +49,13 @@ struct DragHomeView: View {
                 Text("m")
             }
             Button {
-                let mphValue = unit == .mph ? Double(dragTargetSpeed) : Double(dragTargetSpeed) * 0.621371
-                let mps = (mphValue ?? 60) * 0.44704
+                let speedInput = Double(dragTargetSpeed)
+                let mps: Double
+                if unit == .mph {
+                    mps = (speedInput ?? 60) * 0.44704 // mph → m/s
+                } else { // km/h
+                    mps = (speedInput ?? 60) / 3.6
+                }
                 let dist = Double(dragTargetDistance)
                 runViewModel = DragViewModel(startSpeed: 0, targetSpeed: dist == nil ? mps : nil, targetDistance: dist)
             } label: {

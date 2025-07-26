@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct AccountView: View {
-    @AppStorage("speedUnit") private var speedUnitRaw: String = SpeedUnit.mph.rawValue
+    @AppStorage("speedUnit") private var speedUnitRaw: String = SpeedUnit.kmh.rawValue
     private var speedUnit: SpeedUnit {
         get { SpeedUnit(rawValue: speedUnitRaw) ?? .mph }
         set { speedUnitRaw = newValue.rawValue }

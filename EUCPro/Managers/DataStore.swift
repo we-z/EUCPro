@@ -68,4 +68,16 @@ final class DataStore: ObservableObject {
             try? data.write(to: tracksURL)
         }
     }
+    
+    func deleteTracks(at offsets: IndexSet) {
+        tracks.remove(atOffsets: offsets)
+        saveTracks()
+    }
+    
+    func delete(track: Track) {
+        if let index = tracks.firstIndex(where: { $0.id == track.id }) {
+            tracks.remove(at: index)
+            saveTracks()
+        }
+    }
 } 

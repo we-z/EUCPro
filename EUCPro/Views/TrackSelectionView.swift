@@ -21,13 +21,26 @@ struct TrackSelectionView: View {
                         }
                     }
                 }
+                .onDelete(perform: delete)
             }
             .navigationTitle("Tracks")
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    EditButton()
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     NavigationLink("Add") { AddTrackView() }
                 }
             }
+        }
+    }
+
+    private func delete(at offsets: IndexSet) {
+        // Capture the tracks being removed before deletion to update selection if needed
+        let removed = offsets.map { store.tracks[$0] }
+        store.deleteTracks(at: offsets)
+        if let selected = selectedTrack, removed.contains(where: { $0.id == selected.id }) {
+            selectedTrack = nil
         }
     }
 }

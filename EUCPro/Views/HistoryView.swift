@@ -82,9 +82,14 @@ struct RunDetailView: View {
                     }
                 }
                 if !run.speedData.isEmpty {
+                    let baseSpeedTime = run.speedData.first?.timestamp ?? run.date
                     Chart(run.speedData) {
-                        LineMark(x: .value("Distance", $0.distance), y: .value("Speed", $0.speed*3.6))
-                    }.frame(height: 200)
+                        LineMark(x: .value("Time", $0.timestamp.timeIntervalSince(baseSpeedTime)),
+                                 y: .value("Speed", $0.speed*3.6))
+                    }
+                    .chartXAxisLabel("Time (s)")
+                    .chartYAxisLabel("Speed (km/h)")
+                    .frame(height: 200)
                 }
                 if let acc = run.accelData, !acc.isEmpty {
                     let baseTime = acc.first?.timestamp ?? run.date

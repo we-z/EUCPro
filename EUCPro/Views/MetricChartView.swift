@@ -1,5 +1,6 @@
 import SwiftUI
 import Charts
+import UIKit
 
 // MARK: - Timestamped helper
 /// A lightweight protocol for time-series data points.
@@ -10,6 +11,166 @@ protocol Timestamped {
 // Conform existing models
 extension SpeedPoint: Timestamped {}
 extension AccelPoint: Timestamped {}
+
+// MARK: - DomainXGesture utilities
+// Protocol allowing numeric-like domain types to be converted to and from Double values.
+public protocol ExpressibleByDouble: Comparable {
+    var double: Double { get }
+    init(_ double: Double)
+}
+
+extension TimeInterval: ExpressibleByDouble {
+    public var double: Double { self }
+    public init(_ double: Double) { self = double }
+}
+
+extension Date: ExpressibleByDouble {
+    public var double: Double { timeIntervalSince1970 }
+    public init(_ double: Double) { self = Date(timeIntervalSince1970: double) }
+}
+
+/// A UIKit-backed gesture recognizer that provides pan and pinch control over a chart’s horizontal domain.
+public struct DomainXGesture<Bound: ExpressibleByDouble>: UIGestureRecognizerRepresentable {
+    @Binding private var domain: ClosedRange<Bound>
+    private let simultaneous: Bool
+    private let onEnded: () -> Void
+
+    @State private var leading: Double?
+    @State private var leadingValue: Double?
+    @State private var trailingValue: Double?
+
+    public init(
+        domain: Binding<ClosedRange<Bound>>,
+        simultaneous: Bool = false,
+        onEnded: @escaping () -> () = {}
+    ) {
+        self._domain = domain
+        self.simultaneous = simultaneous
+        self.onEnded = onEnded
+    }
+
+    public func makeUIGestureRecognizer(context: Context) -> GestureRecognizer {
+        GestureRecognizer(simultaneous: simultaneous)
+    }
+
+    public func updateUIGestureRecognizer(_ recognizer: GestureRecognizer, context: Context) {
+        recognizer.simultaneous = simultaneous
+    }
+
+    public func handleUIGestureRecognizerAction(_ recognizer: GestureRecognizer, context: Context) {
+        let lower = domain.lowerBound.double
+        let upper = domain.upperBound.double
+        switch recognizer.interaction {
+        case .pan(let x, let isInitial):
+            if isInitial { leading = x }
+            if let leading {
+                let offset = (upper - lower) * (leading - x)
+                domain = Bound(lower + offset)...Bound(upper + offset)
+                self.leading = x
+            }
+        case .pinch(let leadingX, let trailingX, let isInitial):
+            guard leadingX != trailingX else { return }
+            if isInitial {
+                let m = upper - lower
+                leadingValue = (m * leadingX) + lower
+                trailingValue = (m * trailingX) + lower
+            }
+            if let leadingValue, let trailingValue {
+                let m = (trailingValue - leadingValue) / (trailingX - leadingX)
+                let b = leadingValue - m * leadingX
+                domain = Bound(b)...Bound(b + m)
+            }
+        case nil:
+            onEnded()
+        }
+    }
+}
+
+// MARK: Internal gesture recognizer implementation
+extension DomainXGesture {
+    public class GestureRecognizer: UIGestureRecognizer, UIGestureRecognizerDelegate {
+        enum Interaction {
+            case pan(x: Double, isInitial: Bool)
+            case pinch(leadingX: CGFloat, trailingX: CGFloat, isInitial: Bool)
+        }
+
+        var simultaneous: Bool
+        var interaction: Interaction?
+        private var retainedTouches = Set<UITouch>()
+        private var initialInteraction = true
+
+        init(simultaneous: Bool) {
+            self.simultaneous = simultaneous
+            super.init(target: nil, action: nil)
+            self.delegate = self
+        }
+
+        private func updateInteraction(isInitial: Bool) {
+            guard let view else { return }
+            let locations = retainedTouches.map { $0.location(in: view).x / view.frame.width }
+            switch locations.count {
+            case 1:
+                interaction = .pan(x: locations.first!, isInitial: isInitial)
+            case 2:
+                interaction = .pinch(
+                    leadingX: locations.min()!,
+                    trailingX: locations.max()!,
+                    isInitial: isInitial
+                )
+            default:
+                break
+            }
+        }
+
+        // MARK: UIGestureRecognizer overrides
+        public override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+            switch retainedTouches.count + touches.count {
+            case 1:
+                retainedTouches.formUnion(touches)
+                initialInteraction = true
+                state = .began
+            case 2:
+                retainedTouches.formUnion(touches)
+                initialInteraction = true
+                state = .changed
+            default:
+                break
+            }
+        }
+
+        public override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+            guard !retainedTouches.intersection(touches).isEmpty else { return }
+            updateInteraction(isInitial: initialInteraction)
+            initialInteraction = false
+            state = .changed
+        }
+
+        public override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+            retainedTouches.subtract(touches)
+            if retainedTouches.isEmpty {
+                interaction = nil
+                state = .ended
+            } else {
+                updateInteraction(isInitial: true)
+            }
+        }
+
+        public override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+            retainedTouches.subtract(touches)
+            if retainedTouches.isEmpty {
+                interaction = nil
+                state = .cancelled
+            } else {
+                updateInteraction(isInitial: true)
+            }
+        }
+
+        // MARK: UIGestureRecognizerDelegate
+        public func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            simultaneous
+        }
+    }
+}
 
 // MARK: - Reusable zoomable chart
 /// Generic SwiftUI view that renders a line chart with horizontal scrolling and pinch-to-zoom support.
@@ -24,10 +185,12 @@ struct MetricChartView<Point>: View where Point: Identifiable & Timestamped {
     /// Height of the chart view (defaults to 200)
     let height: CGFloat
 
-    // Current visible span along the X-axis (seconds)
-    @State private var visibleLength: Double
-    // Continuous magnification amount during a pinch gesture
-    @GestureState private var magnifyBy: CGFloat = 1
+    // Baseline timestamp to convert absolute dates to relative seconds
+    private let base: Date
+    // Total duration of the data set (seconds)
+    private let totalDuration: TimeInterval
+    // The currently visible horizontal domain (relative seconds)
+    @State private var domain: ClosedRange<TimeInterval>
 
     init(data: [Point],
          value: @escaping (Point) -> Double,
@@ -38,10 +201,12 @@ struct MetricChartView<Point>: View where Point: Identifiable & Timestamped {
         self.yAxisLabel = yAxisLabel
         self.height = height
 
-        // Default to showing the full duration of the data set
+        // Establish baseline and full-range domain
         let base = data.first?.timestamp ?? Date()
         let total = max(1, data.last?.timestamp.timeIntervalSince(base) ?? 1)
-        _visibleLength = State(initialValue: total)
+        self.base = base
+        self.totalDuration = total
+        _domain = State(initialValue: 0...total)
     }
 
     var body: some View {
@@ -49,32 +214,46 @@ struct MetricChartView<Point>: View where Point: Identifiable & Timestamped {
             Text("No data")
                 .foregroundColor(.secondary)
         } else {
-            let base = data.first!.timestamp
-            let total = max(1, data.last!.timestamp.timeIntervalSince(base))
-            let current = max(1, min(total, visibleLength / Double(magnifyBy)))
+            // Create a binding that clamps any updates from the gesture so the domain
+            // never moves outside the recorded time span.
+            let clampedDomain = Binding<ClosedRange<TimeInterval>>(get: { domain }) { newValue in
+                var new = newValue
+                // If the range is wider than the total duration, just snap to full range
+                if new.upperBound - new.lowerBound >= totalDuration {
+                    new = 0...totalDuration
+                }
+                // Shift the range right if it goes past the left edge (0)
+                if new.lowerBound < 0 {
+                    let offset = -new.lowerBound
+                    new = (new.lowerBound + offset)...(new.upperBound + offset)
+                }
+                // Shift the range left if it goes past the right edge (totalDuration)
+                if new.upperBound > totalDuration {
+                    let offset = new.upperBound - totalDuration
+                    new = (new.lowerBound - offset)...(new.upperBound - offset)
+                }
+                // Final safety clamp
+                new = max(0, new.lowerBound)...min(totalDuration, new.upperBound)
+                domain = new
+            }
 
             Chart(data) { point in
                 LineMark(
-                    x: .value("Time", point.timestamp.timeIntervalSince(base)),
+                    x: .value("Time (s)", point.timestamp.timeIntervalSince(base)),
                     y: .value(yAxisLabel, value(point))
                 )
             }
-            .chartScrollableAxes(.horizontal)
-            .chartXVisibleDomain(length: current)
+            .chartXScale(domain: clampedDomain.wrappedValue)
             .chartXAxisLabel("Time (s)")
             .chartYAxisLabel(yAxisLabel)
+            // Ensure rendered marks are clipped to the plotting rectangle so lines do not
+            // extend beyond the visible chart area (especially noticeable when panning/zooming).
+            .chartPlotStyle { plotArea in
+                plotArea
+                    .clipShape(Rectangle())
+            }
             .frame(height: height)
-            .highPriorityGesture(
-                MagnifyGesture()
-                    .updating($magnifyBy) { gesture, state, _ in
-                        state = gesture.magnification
-                    }
-                    .onEnded { gesture in
-                        var new = visibleLength / gesture.magnification
-                        new = max(1, min(total, new))
-                        visibleLength = new
-                    }
-            )
+            .gesture(DomainXGesture(domain: clampedDomain))
         }
     }
 } 

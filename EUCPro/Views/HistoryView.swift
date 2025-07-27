@@ -76,7 +76,7 @@ struct RunDetailView: View {
                                                     longitudeDelta: max(0.001, (maxLon-minLon)*1.4))
                         let region = MKCoordinateRegion(center: center, span: span)
 
-                        Map(initialPosition: .region(region), interactionModes: []) {
+                        Map(initialPosition: .region(region), interactionModes: [.zoom, .pan]) {
                             MapPolyline(coordinates: coords)
                                 .stroke(Color.blue, lineWidth: 3)
 

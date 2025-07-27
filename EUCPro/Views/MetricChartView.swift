@@ -34,7 +34,7 @@ struct MetricChartView<Point>: View where Point: Identifiable & Timestamped {
          value: @escaping (Point) -> Double,
          yAxisLabel: String,
          height: CGFloat = 200,
-         intervals: [Double] = [5, 10, 30, 60, 120, 300]) {
+         intervals: [Double] = [5, 10, 30, 60, 300]) {
         self.data = data
         self.value = value
         self.yAxisLabel = yAxisLabel
@@ -76,10 +76,10 @@ struct MetricChartView<Point>: View where Point: Identifiable & Timestamped {
                             visibleLength = interval
                         }) {
                             Text(label(for: interval))
-                                .padding(6)
+                                .foregroundColor(.accentColor)
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(interval == visibleLength ? .accentColor : .gray)
+                        .tint(interval == visibleLength ? .accentColor.opacity(0.1) : .clear)
                     }
                 }
             }
@@ -94,4 +94,31 @@ struct MetricChartView<Point>: View where Point: Identifiable & Timestamped {
             return String(format: "%.0fm", seconds / 60)
         }
     }
-} 
+}
+
+#if DEBUG
+// MARK: - Preview
+struct MetricChartView_Previews: PreviewProvider {
+    // Generate 2 minutes of sample speed data at 1 Hz
+    static var sampleData: [SpeedPoint] {
+        let base = Date()
+        return (0..<120).map { i in
+            SpeedPoint(
+                timestamp: base.addingTimeInterval(Double(i)),
+                speed: .random(in: 0...15), // m/s
+                distance: Double(i)
+            )
+        }
+    }
+
+    static var previews: some View {
+        MetricChartView(
+            data: sampleData,
+            value: { $0.speed * 2.23694 }, // convert to mph for display
+            yAxisLabel: "Speed (mph)"
+        )
+        .padding()
+        .previewLayout(.sizeThatFits)
+    }
+}
+#endif 

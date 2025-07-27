@@ -24,22 +24,19 @@ struct MetricChartView<Point>: View where Point: Identifiable & Timestamped {
     /// Height of the chart view (defaults to 200)
     let height: CGFloat
 
-    // Available preset window sizes for the X-axis (seconds)
-    let intervals: [Double]
-
-    // Currently selected span along the X-axis (seconds)
+    // Current visible span along the X-axis (seconds)
     @State private var visibleLength: Double
+    // Continuous magnification amount during a pinch gesture
+    @GestureState private var magnifyBy: CGFloat = 1
 
     init(data: [Point],
          value: @escaping (Point) -> Double,
          yAxisLabel: String,
-         height: CGFloat = 200,
-         intervals: [Double] = [5, 10, 30, 60, 300]) {
+         height: CGFloat = 200) {
         self.data = data
         self.value = value
         self.yAxisLabel = yAxisLabel
         self.height = height
-        self.intervals = intervals
 
         // Default to showing the full duration of the data set
         let base = data.first?.timestamp ?? Date()
@@ -54,57 +51,33 @@ struct MetricChartView<Point>: View where Point: Identifiable & Timestamped {
         } else {
             let base = data.first!.timestamp
             let total = max(1, data.last!.timestamp.timeIntervalSince(base))
-            let current = max(1, min(total, visibleLength))
+            let current = max(1, min(total, visibleLength / Double(magnifyBy)))
 
-            VStack(spacing: 10) {
-                Chart(data) { point in
-                    LineMark(
-                        x: .value("Time", point.timestamp.timeIntervalSince(base)),
-                        y: .value(yAxisLabel, value(point))
-                    )
-                }
-                .chartScrollableAxes(.horizontal)
-                .chartXVisibleDomain(length: current)
-                .chartXAxisLabel("Time (s)")
-                .chartYAxisLabel(yAxisLabel)
-                .frame(height: height)
-
-                // Interval selection controls
-                HStack {
-                    ForEach(intervals, id: \.self) { interval in
-                        Button(action: {
-                            visibleLength = interval
-                        }) {
-                            Text(label(for: interval))
-                                .foregroundColor(.accentColor)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(interval == visibleLength ? .accentColor.opacity(0.1) : .clear)
-                    }
-                    // "All" preset shows the entire data set
-                    Button(action: {
-                        visibleLength = total
-                    }) {
-                        Text("All")
-                            .foregroundColor(.accentColor)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(visibleLength == total ? .accentColor.opacity(0.1) : .clear)
-
-                }
+            Chart(data) { point in
+                LineMark(
+                    x: .value("Time", point.timestamp.timeIntervalSince(base)),
+                    y: .value(yAxisLabel, value(point))
+                )
             }
+            .chartScrollableAxes(.horizontal)
+            .chartXVisibleDomain(length: current)
+            .chartXAxisLabel("Time (s)")
+            .chartYAxisLabel(yAxisLabel)
+            .frame(height: height)
+            .highPriorityGesture(
+                MagnifyGesture()
+                    .updating($magnifyBy) { gesture, state, _ in
+                        state = gesture.magnification
+                    }
+                    .onEnded { gesture in
+                        var new = visibleLength / gesture.magnification
+                        new = max(1, min(total, new))
+                        visibleLength = new
+                    }
+            )
         }
     }
-
-    // Helper that turns a time interval (seconds) into a human-readable label
-    private func label(for seconds: Double) -> String {
-        if seconds < 60 {
-            return String(format: "%.0fs", seconds)
-        } else {
-            return String(format: "%.0fm", seconds / 60)
-        }
-    }
-}
+} 
 
 #if DEBUG
 // MARK: - Preview

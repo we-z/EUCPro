@@ -81,6 +81,16 @@ struct MetricChartView<Point>: View where Point: Identifiable & Timestamped {
                         .buttonStyle(.borderedProminent)
                         .tint(interval == visibleLength ? .accentColor.opacity(0.1) : .clear)
                     }
+                    // "All" preset shows the entire data set
+                    Button(action: {
+                        visibleLength = total
+                    }) {
+                        Text("All")
+                            .foregroundColor(.accentColor)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(visibleLength == total ? .accentColor.opacity(0.1) : .clear)
+
                 }
             }
         }

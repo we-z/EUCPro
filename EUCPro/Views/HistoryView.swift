@@ -49,6 +49,33 @@ struct RunDetailView: View {
     let run: Run
     @AppStorage("speedUnit") private var speedUnitRaw: String = SpeedUnit.kmh.rawValue
     private var unit: SpeedUnit { SpeedUnit(rawValue: speedUnitRaw) ?? .mph }
+    // Visible span (in seconds) for the X-axis of the speed and acceleration charts.
+    @State private var speedVisibleLength: Double
+    @State private var accelVisibleLength: Double
+
+    // Temporary magnification during an active pinch gesture (resets to 1 afterwards)
+    @GestureState private var speedMagnifyBy: CGFloat = 1
+    @GestureState private var accelMagnifyBy: CGFloat = 1
+
+    // Custom initializer to compute default visible lengths based on data duration
+    init(run: Run) {
+        self.run = run
+
+        // Compute total speed duration
+        let speedStart = run.speedData.first?.timestamp ?? run.date
+        let speedEnd = run.speedData.last?.timestamp ?? run.date
+        var speedDur = speedEnd.timeIntervalSince(speedStart)
+        if speedDur <= 0 { speedDur = 10 }
+
+        // Compute total acceleration duration (if accel data present)
+        let accStart = run.accelData?.first?.timestamp ?? run.date
+        let accEnd = run.accelData?.last?.timestamp ?? run.date
+        var accDur = accEnd.timeIntervalSince(accStart)
+        if accDur <= 0 { accDur = 10 }
+
+        _speedVisibleLength = State(initialValue: speedDur)
+        _accelVisibleLength = State(initialValue: accDur)
+    }
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -106,23 +133,59 @@ struct RunDetailView: View {
                 }
                 if !run.speedData.isEmpty {
                     let baseSpeedTime = run.speedData.first?.timestamp ?? run.date
+                    // Total time span of the recording – used to clamp zoom limits
+                    let totalSpeedDuration = run.speedData.last?.timestamp.timeIntervalSince(baseSpeedTime) ?? 1
+                    // Effective visible span reflects ongoing pinch gesture
+                    let currentSpeedLength = max(1, min(totalSpeedDuration, speedVisibleLength / Double(speedMagnifyBy)))
+
                     Chart(run.speedData) {
                         LineMark(x: .value("Time", $0.timestamp.timeIntervalSince(baseSpeedTime)),
                                  y: .value("Speed", unit.convert(mps: $0.speed)))
                     }
+                    .chartScrollableAxes(.horizontal)
+                    .chartXVisibleDomain(length: currentSpeedLength)
                     .chartXAxisLabel("Time (s)")
                     .chartYAxisLabel("Speed (\(unit.label))")
                     .frame(height: 200)
+                    // Pinch-to-zoom gesture that updates continuously
+                    .gesture(
+                        MagnifyGesture()
+                            .updating($speedMagnifyBy) { value, state, _ in
+                                state = value.magnification
+                            }
+                            .onEnded { value in
+                                var newLength = speedVisibleLength / value.magnification
+                                newLength = max(1, min(totalSpeedDuration, newLength))
+                                speedVisibleLength = newLength
+                            }
+                    )
                 }
                 if let acc = run.accelData, !acc.isEmpty {
                     let baseTime = acc.first?.timestamp ?? run.date
+                    let totalAccDuration = acc.last?.timestamp.timeIntervalSince(baseTime) ?? 1
+                    let currentAccelLength = max(1, min(totalAccDuration, accelVisibleLength / Double(accelMagnifyBy)))
+
                     Chart(acc) {
                         LineMark(x: .value("Time", $0.timestamp.timeIntervalSince(baseTime)),
                                  y: .value("Accel", $0.accel))
                     }
+                    .chartScrollableAxes(.horizontal)
+                    .chartXVisibleDomain(length: currentAccelLength)
                     .chartXAxisLabel("Time (s)")
                     .chartYAxisLabel("Acceleration (G)")
                     .frame(height: 200)
+                    // Pinch-to-zoom for the acceleration chart (continuous)
+                    .gesture(
+                        MagnifyGesture()
+                            .updating($accelMagnifyBy) { value, state, _ in
+                                state = value.magnification
+                            }
+                            .onEnded { value in
+                                var newLength = accelVisibleLength / value.magnification
+                                newLength = max(1, min(totalAccDuration, newLength))
+                                accelVisibleLength = newLength
+                            }
+                    )
                 }
             }.padding()
         }

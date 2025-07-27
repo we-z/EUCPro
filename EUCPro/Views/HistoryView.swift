@@ -47,15 +47,18 @@ struct HistoryView: View {
 
 struct RunDetailView: View {
     let run: Run
+    @AppStorage("speedUnit") private var speedUnitRaw: String = SpeedUnit.kmh.rawValue
+    private var unit: SpeedUnit { SpeedUnit(rawValue: speedUnitRaw) ?? .mph }
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 Text(run.title).font(.title2)
-                ForEach(run.metrics.sorted(by: { $0.key < $1.key }), id: \ .key) { key, value in
+                // Display metrics converted to preferred units where applicable
+                ForEach(convertedMetrics().sorted(by: { $0.key < $1.key }), id: \ .key) { key, value in
                     HStack {
                         Text(key)
                         Spacer()
-                        Text(String(format: "%.2f", value))
+                        Text(value)
                     }
                 }
                 // Map of route for lap sessions
@@ -76,6 +79,26 @@ struct RunDetailView: View {
                         Map(initialPosition: .region(region), interactionModes: []) {
                             MapPolyline(coordinates: coords)
                                 .stroke(Color.blue, lineWidth: 3)
+
+                            // Annotate speed at each logged coordinate (every Nth to reduce clutter)
+                            let paired = Array(zip(coords, run.speedData))
+                            ForEach(Array(paired.enumerated()), id: \ .offset) { idx, pair in
+                                let (coord, spd) = pair
+                                // Show every ~10th point to avoid hundreds of markers
+                                if idx % 10 == 0 {
+                                    Annotation(coordinate: coord) {
+                                        Circle()
+                                            .fill(Color.blue)
+                                            .frame(width: 6, height: 6)
+                                    } label: {
+                                        Text(String(format: "%.0f", unit.convert(mps: spd.speed)))
+                                            .font(.caption2)
+                                            .padding(2)
+                                            .background(.thinMaterial)
+                                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                                    }
+                                }
+                            }
                         }
                         .frame(height: 250)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -85,10 +108,10 @@ struct RunDetailView: View {
                     let baseSpeedTime = run.speedData.first?.timestamp ?? run.date
                     Chart(run.speedData) {
                         LineMark(x: .value("Time", $0.timestamp.timeIntervalSince(baseSpeedTime)),
-                                 y: .value("Speed", $0.speed*3.6))
+                                 y: .value("Speed", unit.convert(mps: $0.speed)))
                     }
                     .chartXAxisLabel("Time (s)")
-                    .chartYAxisLabel("Speed (km/h)")
+                    .chartYAxisLabel("Speed (\(unit.label))")
                     .frame(height: 200)
                 }
                 if let acc = run.accelData, !acc.isEmpty {
@@ -104,5 +127,34 @@ struct RunDetailView: View {
             }.padding()
         }
         .navigationTitle("Run Details")
+    }
+
+    // Converts metrics based on selected unit; returns dictionary key->formatted string
+    private func convertedMetrics() -> [String: String] {
+        var result: [String: String] = [:]
+        for (key, value) in run.metrics {
+            var displayKey = key
+            var displayValue = value
+            // Speed conversions
+            if key.hasSuffix("_mph") {
+                if unit == .kmh {
+                    displayValue = value * 1.60934
+                    displayKey = key.replacingOccurrences(of: "_mph", with: "_kmh")
+                }
+            } else if key.hasSuffix("_kmh") {
+                if unit == .mph {
+                    displayValue = value / 1.60934
+                    displayKey = key.replacingOccurrences(of: "_kmh", with: "_mph")
+                }
+            }
+            // Distance conversions (meters -> km or mi)
+            if key.hasSuffix("_m") {
+                let converted = unit.convert(distanceMeters: value)
+                displayValue = converted
+                displayKey = key.replacingOccurrences(of: "_m", with: "_\(unit.distanceLabel)")
+            }
+            result[displayKey] = String(format: "%.2f", displayValue)
+        }
+        return result
     }
 } 

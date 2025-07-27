@@ -148,7 +148,7 @@ struct RunDetailView: View {
                     .chartYAxisLabel("Speed (\(unit.label))")
                     .frame(height: 200)
                     // Pinch-to-zoom gesture that updates continuously
-                    .gesture(
+                    .highPriorityGesture(
                         MagnifyGesture()
                             .updating($speedMagnifyBy) { value, state, _ in
                                 state = value.magnification
@@ -175,7 +175,7 @@ struct RunDetailView: View {
                     .chartYAxisLabel("Acceleration (G)")
                     .frame(height: 200)
                     // Pinch-to-zoom for the acceleration chart (continuous)
-                    .gesture(
+                    .highPriorityGesture(
                         MagnifyGesture()
                             .updating($accelMagnifyBy) { value, state, _ in
                                 state = value.magnification

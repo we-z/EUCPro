@@ -185,6 +185,14 @@ struct MetricChartView<Point>: View where Point: Identifiable & Timestamped {
     /// Height of the chart view (defaults to 200)
     let height: CGFloat
 
+    /// Unit extracted from yAxisLabel if present (e.g., "mph" from "Speed (mph)")
+    private var unitLabel: String {
+        if let start = yAxisLabel.firstIndex(of: "("),
+           let end = yAxisLabel.firstIndex(of: ")"), start < end {
+            return String(yAxisLabel[yAxisLabel.index(after: start)..<end])
+        }
+        return ""
+    }
     // Baseline timestamp to convert absolute dates to relative seconds
     private let base: Date
     // Total duration of the data set (seconds)
@@ -274,7 +282,7 @@ struct MetricChartView<Point>: View where Point: Identifiable & Timestamped {
                                 y: .disabled)
                         ) {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(String(format: "%.2f", value(selectedPoint)))
+                                Text("\(String(format: "%.2f", value(selectedPoint))) \(unitLabel)")
                                     .font(.caption2.bold())
                                 Text(String(format: "%.1f s", relativeX))
                                     .font(.caption2)

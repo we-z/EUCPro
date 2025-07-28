@@ -191,7 +191,19 @@ struct MetricChartView<Point>: View where Point: Identifiable & Timestamped {
     private let totalDuration: TimeInterval
     // The currently visible horizontal domain (relative seconds)
     @State private var domain: ClosedRange<TimeInterval>
+    /// Raw X-value selected by built-in chart selection gesture (relative seconds)
+    @State private var rawSelectedX: TimeInterval?
 
+    /// Nearest data point to the currently selected X value (if any)
+    private var selectedPoint: Point? {
+        guard let rawSelectedX else { return nil }
+        // Convert relative seconds back to absolute timestamp
+        let targetDate = base.addingTimeInterval(rawSelectedX)
+        // Find the point whose timestamp is closest to the selected date
+        return data.min(by: { abs($0.timestamp.timeIntervalSince(targetDate)) <
+                              abs($1.timestamp.timeIntervalSince(targetDate)) })
+    }
+    
     init(data: [Point],
          value: @escaping (Point) -> Double,
          yAxisLabel: String,
@@ -237,26 +249,78 @@ struct MetricChartView<Point>: View where Point: Identifiable & Timestamped {
                 domain = new
             }
 
-            Chart(data) { point in
-                LineMark(
-                    x: .value("Time (s)", point.timestamp.timeIntervalSince(base)),
-                    y: .value(yAxisLabel, value(point))
-                )
+            // Main chart with optional selection rule/tooltip
+            Chart {
+                // Primary line
+                ForEach(data) { point in
+                    LineMark(
+                        x: .value("Time (s)", point.timestamp.timeIntervalSince(base)),
+                        y: .value(yAxisLabel, value(point))
+                    )
+                }
+
+                // Selection indicator & tooltip
+                if let selectedPoint {
+                    let relativeX = selectedPoint.timestamp.timeIntervalSince(base)
+
+                    RuleMark(x: .value("Selected", relativeX))
+                        .foregroundStyle(Color.gray.opacity(0.3))
+                        .offset(yStart: -10)
+                        .annotation(
+                            position: .top,
+                            spacing: 0,
+                            overflowResolution: .init(
+                                x: .fit(to: .chart),
+                                y: .disabled)
+                        ) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(String(format: "%.2f", value(selectedPoint)))
+                                    .font(.caption2.bold())
+                                Text(String(format: "%.1f s", relativeX))
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(Color(uiColor: .systemBackground))
+                                    .shadow(radius: 2)
+                            )
+                        }
+                        
+                }
             }
+            // Bind zoom/pan domain to x-scale
             .chartXScale(domain: clampedDomain.wrappedValue)
             .chartXAxisLabel("Time (s)")
             .chartYAxisLabel(yAxisLabel)
+            // Enable built-in x-selection
+            .chartXSelection(value: $rawSelectedX)
             // Ensure rendered marks are clipped to the plotting rectangle so lines do not
             // extend beyond the visible chart area (especially noticeable when panning/zooming).
             .chartPlotStyle { plotArea in
                 plotArea
-                    .clipShape(Rectangle())
+                    .clipShape(HorizontalClipShape())
             }
             .frame(height: height)
-            .gesture(DomainXGesture(domain: clampedDomain))
+            // Preserve custom pan/zoom gesture while allowing simultaneous recognition
+            .gesture(DomainXGesture(domain: clampedDomain, simultaneous: true))
         }
     }
 } 
+
+// MARK: - Helper shape
+/// A shape that clips horizontally (left/right) while allowing unlimited vertical overflow.
+private struct HorizontalClipShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        // Extend far beyond vertical bounds so the clip only affects horizontal edges.
+        let extendedRect = CGRect(x: rect.minX,
+                                  y: rect.minY - 10_000,
+                                  width: rect.width,
+                                  height: rect.height + 20_000)
+        return Path(extendedRect)
+    }
+}
 
 #if DEBUG
 // MARK: - Preview

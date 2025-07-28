@@ -33,6 +33,7 @@ extension Date: ExpressibleByDouble {
 public struct DomainXGesture<Bound: ExpressibleByDouble>: UIGestureRecognizerRepresentable {
     @Binding private var domain: ClosedRange<Bound>
     private let simultaneous: Bool
+    private let isEnabled: () -> Bool
     private let onEnded: () -> Void
 
     @State private var leading: Double?
@@ -42,10 +43,12 @@ public struct DomainXGesture<Bound: ExpressibleByDouble>: UIGestureRecognizerRep
     public init(
         domain: Binding<ClosedRange<Bound>>,
         simultaneous: Bool = false,
+        enabled: @escaping () -> Bool = { true },
         onEnded: @escaping () -> () = {}
     ) {
         self._domain = domain
         self.simultaneous = simultaneous
+        self.isEnabled = enabled
         self.onEnded = onEnded
     }
 
@@ -58,6 +61,7 @@ public struct DomainXGesture<Bound: ExpressibleByDouble>: UIGestureRecognizerRep
     }
 
     public func handleUIGestureRecognizerAction(_ recognizer: GestureRecognizer, context: Context) {
+        guard isEnabled() else { return }
         let lower = domain.lowerBound.double
         let upper = domain.upperBound.double
         switch recognizer.interaction {
@@ -199,6 +203,8 @@ struct MetricChartView<Point>: View where Point: Identifiable & Timestamped {
     private let totalDuration: TimeInterval
     // The currently visible horizontal domain (relative seconds)
     @State private var domain: ClosedRange<TimeInterval>
+    /// Flag indicating if the user is currently inspecting a point (after long press)
+    @State private var isSelecting: Bool = false
     /// Raw X-value selected by built-in chart selection gesture (relative seconds)
     @State private var rawSelectedX: TimeInterval?
 
@@ -302,8 +308,27 @@ struct MetricChartView<Point>: View where Point: Identifiable & Timestamped {
             .chartXScale(domain: clampedDomain.wrappedValue)
             .chartXAxisLabel("Time (s)")
             .chartYAxisLabel(yAxisLabel)
-            // Enable built-in x-selection
-            .chartXSelection(value: $rawSelectedX)
+            // Custom long-press → drag gesture to invoke selection and move marker
+            .chartGesture { proxy in
+                LongPressGesture(minimumDuration: 0.5)
+                    .sequenced(before: DragGesture(minimumDistance: 0))
+                    .onChanged { value in
+                        switch value {
+                        case .second(true, let drag?):
+                            isSelecting = true
+                            let locationX = drag.location.x
+                            if let t: TimeInterval = proxy.value(atX: locationX) {
+                                rawSelectedX = t
+                            }
+                        default:
+                            break
+                        }
+                    }
+                    .onEnded { _ in
+                        isSelecting = false
+                        rawSelectedX = nil
+                    }
+            }
             // Ensure rendered marks are clipped to the plotting rectangle so lines do not
             // extend beyond the visible chart area (especially noticeable when panning/zooming).
             .chartPlotStyle { plotArea in
@@ -312,7 +337,13 @@ struct MetricChartView<Point>: View where Point: Identifiable & Timestamped {
             }
             .frame(height: height)
             // Preserve custom pan/zoom gesture while allowing simultaneous recognition
-            .gesture(DomainXGesture(domain: clampedDomain, simultaneous: true))
+            .gesture(
+                DomainXGesture(
+                    domain: clampedDomain,
+                    simultaneous: true,
+                    enabled: { !isSelecting }
+                )
+            )
         }
     }
 } 

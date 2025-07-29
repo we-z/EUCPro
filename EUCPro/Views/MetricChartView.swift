@@ -321,6 +321,14 @@ struct MetricChartView<Point>: View where Point: Identifiable & Timestamped {
                     let upper = r.upperBound
                     let mid  = (lower + upper) / 2
 
+                    // Background overlay for selected range
+                    RectangleMark(
+                        xStart: .value("Range Start", lower),
+                        xEnd: .value("Range End", upper)
+                    )
+                    .foregroundStyle(Color.blue.opacity(0.15))
+                    .zIndex(-1)
+
                     // Rule marks at bounds
                     RuleMark(x: .value("Start", lower))
                         .foregroundStyle(Color.accentColor.opacity(0.25))

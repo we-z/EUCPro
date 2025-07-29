@@ -274,10 +274,6 @@ struct MetricChartView<Point>: View where Point: Identifiable & Timestamped {
                 domain = new
             }
 
-            // Precompute Y-domain once so Y-axis remains stable throughout interactions
-            let yMin = data.map(value).min() ?? 0
-            let yMax = data.map(value).max() ?? (yMin + 1)
-
             // Main chart with optional selection rule/tooltip
             Chart {
                 // Primary line
@@ -367,7 +363,6 @@ struct MetricChartView<Point>: View where Point: Identifiable & Timestamped {
             .chartXScale(domain: clampedDomain.wrappedValue)
             .chartXAxisLabel("Time (s)")
             .chartYAxisLabel(yAxisLabel)
-            .chartYScale(domain: yMin...yMax)
             // Custom long-press → drag gesture to invoke selection and move marker
             .chartGesture { proxy in
                 LongPressGesture(minimumDuration: 0.5)

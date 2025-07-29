@@ -218,6 +218,8 @@ struct MetricChartView<Point>: View where Point: Identifiable & Timestamped {
     @State private var rawSelectedX: TimeInterval?
     /// Raw X-range selected by two-finger gesture (relative seconds)
     @State private var rawSelectedRange: ClosedRange<TimeInterval>?
+    /// ID of the last data point that triggered a haptic so we can avoid redundant feedback
+    @State private var lastHapticPointID: Point.ID?
 
     /// Nearest data point to the currently selected X value (if any)
     private var selectedPoint: Point? {
@@ -374,6 +376,17 @@ struct MetricChartView<Point>: View where Point: Identifiable & Timestamped {
                             let locationX = drag.location.x
                             if let t: TimeInterval = proxy.value(atX: locationX) {
                                 rawSelectedX = t
+
+                                // Trigger an initial impact when the rule mark first appears
+                                if lastHapticPointID == nil {
+                                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                }
+
+                                // Provide selection change haptic when moving between distinct points
+                                if let newPoint = nearestPoint(relativeX: t), newPoint.id != lastHapticPointID {
+                                    UISelectionFeedbackGenerator().selectionChanged()
+                                    lastHapticPointID = newPoint.id
+                                }
                             }
                         default:
                             break
@@ -382,6 +395,7 @@ struct MetricChartView<Point>: View where Point: Identifiable & Timestamped {
                     .onEnded { _ in
                         isSelecting = false
                         rawSelectedX = nil
+                        lastHapticPointID = nil
                     }
             }
             // Two-finger long-press –> drag for range selection
@@ -471,6 +485,13 @@ private struct RangeXGesture<Bound: ExpressibleByDouble>: UIGestureRecognizerRep
             guard let v0: Bound = value(forTouch: 0), let v1: Bound = value(forTouch: 1) else { return }
             range = min(v0, v1)...max(v0, v1)
             isSelecting = true
+
+            // Haptics: medium impact on begin, subtle selection for subsequent updates
+            if recognizer.state == .began {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            } else {
+                UISelectionFeedbackGenerator().selectionChanged()
+            }
         default:
             range = nil
             isSelecting = false

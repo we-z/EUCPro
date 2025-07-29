@@ -418,7 +418,7 @@ struct MetricChartView<Point>: View where Point: Identifiable & Timestamped {
         class GestureRecognizer: UILongPressGestureRecognizer, UIGestureRecognizerDelegate {
             override init(target: Any?, action: Selector?) {
                 super.init(target: target, action: action)
-                minimumPressDuration = 0.5
+                minimumPressDuration = 0.3
                 numberOfTouchesRequired = 1
                 // Keep default allowableMovement (~10pt) so a drag cancels the long-press.
                 delegate = self
@@ -485,7 +485,7 @@ private struct RangeXGesture<Bound: ExpressibleByDouble>: UIGestureRecognizerRep
     class GestureRecognizer: UILongPressGestureRecognizer, UIGestureRecognizerDelegate {
         override init(target: Any?, action: Selector?) {
             super.init(target: target, action: action)
-            minimumPressDuration = 0.5
+            minimumPressDuration = 0.3
             numberOfTouchesRequired = 2
             allowableMovement = 1000
             delegate = self

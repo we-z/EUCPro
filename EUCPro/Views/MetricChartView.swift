@@ -450,13 +450,15 @@ struct MetricChartView<Point>: View where Point: Identifiable & Timestamped {
             let value = Bound(lowerDouble + span * Double(normX))
 
             switch recognizer.state {
-            case .began, .changed:
+            case .began:
                 selected = value
                 isSelecting = true
-                // Haptic feedback on initial selection
-                if recognizer.state == .began {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                }
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            case .changed:
+                selected = value
+                isSelecting = true
+                // Provide subtle feedback as the finger moves across points
+                UISelectionFeedbackGenerator().selectionChanged()
             default:
                 selected = nil
                 isSelecting = false

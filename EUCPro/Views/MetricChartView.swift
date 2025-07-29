@@ -443,8 +443,8 @@ private struct RangeXGesture<Bound: ExpressibleByDouble>: UIGestureRecognizerRep
         }
 
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
-            // Prevent simultaneous recognition to avoid conflict with pan/zoom recognizer
-            return false
+            // Permit simultaneous recognition so we can begin even if DomainXGesture is already active.
+            return true
         }
     }
 

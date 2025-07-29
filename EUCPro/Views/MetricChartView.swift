@@ -218,8 +218,6 @@ struct MetricChartView<Point>: View where Point: Identifiable & Timestamped {
     @State private var rawSelectedX: TimeInterval?
     /// Raw X-range selected by two-finger gesture (relative seconds)
     @State private var rawSelectedRange: ClosedRange<TimeInterval>?
-    /// ID of the last data point that triggered a haptic so we can avoid redundant feedback
-    @State private var lastHapticPointID: Point.ID?
 
     /// Nearest data point to the currently selected X value (if any)
     private var selectedPoint: Point? {
@@ -365,39 +363,15 @@ struct MetricChartView<Point>: View where Point: Identifiable & Timestamped {
             .chartXScale(domain: clampedDomain.wrappedValue)
             .chartXAxisLabel("Time (s)")
             .chartYAxisLabel(yAxisLabel)
-            // Custom long-press → drag gesture to invoke selection and move marker
-            .chartGesture { proxy in
-                LongPressGesture(minimumDuration: 0.5)
-                    .sequenced(before: DragGesture(minimumDistance: 0))
-                    .onChanged { value in
-                        switch value {
-                        case .second(true, let drag?):
-                            isSelecting = true
-                            let locationX = drag.location.x
-                            if let t: TimeInterval = proxy.value(atX: locationX) {
-                                rawSelectedX = t
-
-                                // Trigger an initial impact when the rule mark first appears
-                                if lastHapticPointID == nil {
-                                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                                }
-
-                                // Provide selection change haptic when moving between distinct points
-                                if let newPoint = nearestPoint(relativeX: t), newPoint.id != lastHapticPointID {
-                                    UISelectionFeedbackGenerator().selectionChanged()
-                                    lastHapticPointID = newPoint.id
-                                }
-                            }
-                        default:
-                            break
-                        }
-                    }
-                    .onEnded { _ in
-                        isSelecting = false
-                        rawSelectedX = nil
-                        lastHapticPointID = nil
-                    }
-            }
+            // Custom one-finger long-press gesture for point selection
+            .gesture(
+                PointSelectGesture(
+                    domain: clampedDomain,
+                    selected: $rawSelectedX,
+                    isSelecting: $isSelecting,
+                    isZooming: $isZooming
+                )
+            )
             // Two-finger long-press –> drag for range selection
             .gesture(
                 RangeXGesture(
@@ -425,7 +399,71 @@ struct MetricChartView<Point>: View where Point: Identifiable & Timestamped {
             )
         }
     }
-} 
+
+    // MARK: - One-finger point selection gesture
+    private struct PointSelectGesture<Bound: ExpressibleByDouble>: UIGestureRecognizerRepresentable {
+        @Binding private var domain: ClosedRange<Bound>
+        @Binding private var selected: Bound?
+        @Binding private var isSelecting: Bool
+        @Binding private var isZooming: Bool
+
+        init(domain: Binding<ClosedRange<Bound>>, selected: Binding<Bound?>, isSelecting: Binding<Bool>, isZooming: Binding<Bool>) {
+            self._domain = domain
+            self._selected = selected
+            self._isSelecting = isSelecting
+            self._isZooming = isZooming
+        }
+
+        // Recognizer: single-finger long press that continues as drag
+        class GestureRecognizer: UILongPressGestureRecognizer, UIGestureRecognizerDelegate {
+            override init(target: Any?, action: Selector?) {
+                super.init(target: target, action: action)
+                minimumPressDuration = 0.5
+                numberOfTouchesRequired = 1
+                // Keep default allowableMovement (~10pt) so a drag cancels the long-press.
+                delegate = self
+            }
+
+            func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+                // Allow simultaneous recognition so other gestures (e.g., Domain pan/zoom) can still work when not selecting.
+                return true
+            }
+        }
+
+        // MARK: UIGestureRecognizerRepresentable
+        func makeUIGestureRecognizer(context: Context) -> GestureRecognizer {
+            GestureRecognizer(target: nil, action: nil)
+        }
+
+        func updateUIGestureRecognizer(_ recognizer: GestureRecognizer, context: Context) {}
+
+        func handleUIGestureRecognizerAction(_ recognizer: GestureRecognizer, context: Context) {
+            guard let view = recognizer.view else { return }
+
+            // Ignore if a pinch-zoom is active
+            if isZooming { return }
+
+            let lowerDouble = domain.lowerBound.double
+            let upperDouble = domain.upperBound.double
+            let span = upperDouble - lowerDouble
+            let normX = recognizer.location(in: view).x / view.frame.width
+            let value = Bound(lowerDouble + span * Double(normX))
+
+            switch recognizer.state {
+            case .began, .changed:
+                selected = value
+                isSelecting = true
+                // Haptic feedback on initial selection
+                if recognizer.state == .began {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                }
+            default:
+                selected = nil
+                isSelecting = false
+            }
+        }
+    }
+}
 
 // MARK: - Two-finger range selection gesture
 private struct RangeXGesture<Bound: ExpressibleByDouble>: UIGestureRecognizerRepresentable {

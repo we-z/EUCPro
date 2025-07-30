@@ -2,7 +2,7 @@ import SwiftUI
 
 struct DragHomeView: View {
     @AppStorage("speedUnit") private var speedUnitRaw: String = SpeedUnit.kmh.rawValue
-    @State private var dragTargetSpeed: Int = 40
+    @State private var dragTargetSpeed: Int = 30
     @State private var dragTargetDistance: String = ""
     @State private var showRun = false
     @State private var runViewModel: DragViewModel? = nil

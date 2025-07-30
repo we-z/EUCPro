@@ -33,23 +33,6 @@ struct DragMeasurementView: View {
                         .font(.title2)
                         .foregroundColor(.secondary)
                     
-                    HStack(spacing: 40) {
-                        VStack {
-                            Text(String(format: "%.2f", unit.convert(distanceMeters: viewModel.distance)))
-                                .font(.title)
-                                .monospacedDigit()
-                            Text(unit.distanceLabel)
-                                .foregroundColor(.secondary)
-                        }
-                        VStack {
-                            Text(String(format: "%.2f", viewModel.elapsed))
-                                .font(.title)
-                                .monospacedDigit()
-                            Text("s")
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                    .padding(.top)
                     // Live sensor charts
                     VStack(alignment: .leading, spacing: 16) {
                         Text("Acceleration (G)")

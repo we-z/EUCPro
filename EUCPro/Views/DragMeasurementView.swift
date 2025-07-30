@@ -128,4 +128,10 @@ struct DragMeasurementView: View {
             SensorFusionManager.shared.stop()
         }
     }
+}
+
+struct DragMeasurementView_Previews: PreviewProvider {
+    static var previews: some View {
+        DragMeasurementView(viewModel: DragViewModel(startSpeed: 0, targetSpeed: 20))
+    }
 } 

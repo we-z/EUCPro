@@ -23,61 +23,65 @@ struct DragMeasurementView: View {
     @State private var cancellables: Set<AnyCancellable> = []
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            VStack(spacing: 32) {
-                Text(String(format: "%.1f", unit.convert(mps: viewModel.currentSpeed)))
-                    .font(.system(size: 180))
-                    .monospacedDigit()
-                Text(unit.label.uppercased())
-                    .font(.title2)
-                    .foregroundColor(.secondary)
-
-                HStack(spacing: 40) {
-                    VStack {
-                        Text(String(format: "%.2f", unit.convert(distanceMeters: viewModel.distance)))
-                            .font(.title)
-                            .monospacedDigit()
-                        Text(unit.distanceLabel)
-                            .foregroundColor(.secondary)
+        VStack {
+            ScrollView {
+                VStack {
+                    Text(String(format: "%.1f", unit.convert(mps: viewModel.currentSpeed)))
+                        .font(.system(size: 120))
+                        .monospacedDigit()
+                    Text(unit.label.uppercased())
+                        .font(.title2)
+                        .foregroundColor(.secondary)
+                    
+                    HStack(spacing: 40) {
+                        VStack {
+                            Text(String(format: "%.2f", unit.convert(distanceMeters: viewModel.distance)))
+                                .font(.title)
+                                .monospacedDigit()
+                            Text(unit.distanceLabel)
+                                .foregroundColor(.secondary)
+                        }
+                        VStack {
+                            Text(String(format: "%.2f", viewModel.elapsed))
+                                .font(.title)
+                                .monospacedDigit()
+                            Text("s")
+                                .foregroundColor(.secondary)
+                        }
                     }
-                    VStack {
-                        Text(String(format: "%.2f", viewModel.elapsed))
-                            .font(.title)
-                            .monospacedDigit()
-                        Text("s")
-                            .foregroundColor(.secondary)
+                    .padding(.top)
+                    // Live sensor charts
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Acceleration (G)")
+                            .font(.caption.bold())
+                        Chart(accelPoints) { point in
+                            LineMark(
+                                x: .value("Time", point.time),
+                                y: .value("G", point.value)
+                            )
+                            .interpolationMethod(.linear)
+                        }
+                        .frame(height: 120)
+                        .chartXAxisLabel("Time (s)")
+                        .chartYAxisLabel("Acceleration (G)")
+                        
+                        Text("GPS Speed (\(unit.label))")
+                            .font(.caption.bold())
+                        Chart(gpsPoints) { point in
+                            LineMark(
+                                x: .value("Time", point.time),
+                                y: .value("Speed", point.value)
+                            )
+                            .interpolationMethod(.linear)
+                        }
+                        .frame(height: 120)
+                        .chartXAxisLabel("Time (s)")
+                        .chartYAxisLabel("Speed (\(unit.label))")
                     }
+                    .padding()
+                    Spacer()
                 }
-                // Live sensor charts
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Acceleration (G)")
-                    .font(.caption.bold())
-                Chart(accelPoints) { point in
-                    LineMark(
-                        x: .value("Time", point.time),
-                        y: .value("G", point.value)
-                    )
-                    .interpolationMethod(.linear)
-                }
-                .frame(height: 120)
-                .chartXAxisLabel("Time (s)")
-                .chartYAxisLabel("Acceleration (G)")
-
-                Text("GPS Speed (\(unit.label))")
-                    .font(.caption.bold())
-                Chart(gpsPoints) { point in
-                    LineMark(
-                        x: .value("Time", point.time),
-                        y: .value("Speed", point.value)
-                    )
-                    .interpolationMethod(.linear)
-                }
-                .frame(height: 120)
-                .chartXAxisLabel("Time (s)")
-                .chartYAxisLabel("Speed (\(unit.label))")
-            }
-            .padding()
-            Spacer()
+                
             }
             Button {
                 viewModel.manualStop()

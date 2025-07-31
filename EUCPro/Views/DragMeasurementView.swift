@@ -27,11 +27,24 @@ struct DragMeasurementView: View {
             ScrollView {
                 VStack {
                     Text(String(format: "%.1f", unit.convert(mps: viewModel.currentSpeed)))
+                        .opacity(viewModel.hasGPSFix ? 1 : 0.3)
                         .font(.system(size: 120))
                         .monospacedDigit()
                     Text(unit.label.uppercased())
                         .font(.title2)
                         .foregroundColor(.secondary)
+
+                    if !viewModel.hasGPSFix {
+                        VStack(spacing: 4) {
+                            Text("No Fix")
+                                .font(.title.bold())
+                            Text("Device is still waiting for GPS fix. This may take a few moments")
+                                .font(.caption)
+                                .multilineTextAlignment(.center)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.vertical, 16)
+                    }
                     
                     // Live sensor charts
                     VStack(alignment: .leading, spacing: 16) {

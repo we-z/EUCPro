@@ -12,13 +12,15 @@ final class DragViewModel: ObservableObject, Identifiable {
     let targetSpeed: Double?
     let targetDistance: Double?
     
-    @Published var currentSpeed: Double = 0 // mph
+    @Published var currentSpeed: Double = 0 // m/s
+    @Published var hasGPSFix: Bool = false
     @Published var elapsed: Double = 0
     @Published var distance: Double = 0
     @Published var finishedMetrics: [String: Double]? = nil
     private var peakSpeedMph: Double = 0
     
     private var startTime: Date?
+    private var lastGPSFixTime: Date = .distantPast
     private var startLocation: CLLocation?
     private var lastSampleLocation: CLLocation?
     // Removed filteredSpeed and smoothingFactor for real-time speed reporting
@@ -30,6 +32,8 @@ final class DragViewModel: ObservableObject, Identifiable {
     // (Removed pedometer fallback properties)
     private var cancellables = Set<AnyCancellable>()
     private var timerCancellable: AnyCancellable?
+    private var loggingCancellable: AnyCancellable?
+    private var lastLoggedSample: Date?
     
     private let locationManager = LocationManager.shared
     private let fusionManager = SensorFusionManager.shared
@@ -50,11 +54,25 @@ final class DragViewModel: ObservableObject, Identifiable {
         subscribeMotion()
         // Pedometer support removed – no longer needed
         SensorFusionManager.shared.reset()
+        // Start 10-Hz logging timer
+        loggingCancellable = Timer.publish(every: 0.1, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] now in
+                guard let self, let _ = self.startTime else { return }
+                // Ensure exactly 10 Hz by relying on timer; prevent overlaps if timer catch-up
+                if let last = self.lastLoggedSample, now.timeIntervalSince(last) < 0.099 {
+                    return
+                }
+                self.lastLoggedSample = now
+                self.speedPoints.append(SpeedPoint(timestamp: now, speed: self.currentSpeed, distance: self.distance))
+            }
     }
     
     func reset() {
         SensorFusionManager.shared.reset()
         startTime = nil
+        loggingCancellable?.cancel()
+        lastLoggedSample = nil
         startLocation = nil
         elapsed = 0
         distance = 0
@@ -73,28 +91,13 @@ final class DragViewModel: ObservableObject, Identifiable {
     }
     
     private func subscribeFusion() {
-        // Combine fused speed with raw GPS speed – GPS has priority when valid.
-        Publishers.CombineLatest(fusionManager.$fusedSpeedMps,
-                                 locationManager.$currentLocation)
+        // High-rate fused speed -> UI (≈50 Hz)
+        fusionManager.$fusedSpeedMps
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] fusedMps, locationOpt in
+            .sink { [weak self] spd in
                 guard let self else { return }
-
-                var displayMps = fusedMps
-
-                if let loc = locationOpt {
-                    let gpsMps = max(0, loc.speed)
-                    let accuracyOk = loc.horizontalAccuracy >= 0 && loc.horizontalAccuracy < 25 // relax to 25 m
-                    let fusedLow = fusedMps < 0.5 // about 1 mph
-                    if accuracyOk && gpsMps > 0.05 && (fusedLow || gpsMps > fusedMps) {
-                        displayMps = gpsMps
-                    }
-                }
-
-                self.currentSpeed = displayMps
-
-                let mph = displayMps * 2.23694
-                if mph > self.peakSpeedMph { self.peakSpeedMph = mph }
+                let filtered = spd < 0.1 ? 0 : spd
+                self.currentSpeed = filtered
             }
             .store(in: &cancellables)
 
@@ -129,15 +132,34 @@ final class DragViewModel: ObservableObject, Identifiable {
     }
 
     // Pedometer support removed – no longer needed
+    
+    private func isValidGPSFix(_ location: CLLocation) -> Bool {
+        // Accept fix with horizontal accuracy better than 15 m and a recent timestamp (<2 s old)
+        return location.horizontalAccuracy >= 0 &&
+               location.horizontalAccuracy < 15 &&
+               abs(location.timestamp.timeIntervalSinceNow) < 2
+    }
+    
     private func handle(location: CLLocation) {
+        guard isValidGPSFix(location) else {
+            hasGPSFix = false
+            // keep currentSpeed unchanged; fusion fallback will handle display
+            return
+        }
+        hasGPSFix = true
         let mphFactor = 2.23694
         // Use Core Location's Doppler speed for simplicity; fallback to 0 if invalid (-1)
-        let gpsSpeed = location.speed >= 0 ? location.speed : 0 // m/s
+        var gpsSpeed = location.speed >= 0 ? location.speed : 0 // m/s
+        // Stationary filtering – reject tiny speeds that are likely noise
+        if gpsSpeed < 0.2 { gpsSpeed = 0 }
 
-        // Keep using GPS speed internally for metrics but don't override currentSpeed;
-        // currentSpeed is now driven by the fused sensor stream for maximum accuracy.
+        // Kalman already blends this GPS into fused stream.
+        // We no longer override currentSpeed here to avoid glitching; the fused sink delivers high-rate view updates.
+        lastGPSFixTime = Date()
+        
+        // Store for metrics.
         var internalSpeedMph = gpsSpeed * mphFactor
-        if stationaryCounter > 25 && internalSpeedMph < 3.0 {
+        if stationaryCounter > 25 && internalSpeedMph < 1.0 {
             internalSpeedMph = 0
         }
 
@@ -156,7 +178,6 @@ final class DragViewModel: ObservableObject, Identifiable {
                 startTime = now
                 startLocation = location
                 lastSampleLocation = location
-                speedPoints.append(SpeedPoint(timestamp: now, speed: gpsSpeed, distance: 0))
 
                 // start high-freq timer for elapsed updates
                 timerCancellable = Timer.publish(every: 0.02, on: .main, in: .common)
@@ -180,7 +201,6 @@ final class DragViewModel: ObservableObject, Identifiable {
         // Replace pedometer fallback with GPS distance only
         distance = gpsDistance
 
-        speedPoints.append(SpeedPoint(timestamp: now, speed: gpsSpeed, distance: distance))
         print(String(format: "Δdist %.2f m | total %.2f m", distance, distance))
         
         if let targetSpeed = targetSpeed, gpsSpeed >= targetSpeed {
@@ -194,6 +214,7 @@ final class DragViewModel: ObservableObject, Identifiable {
     private func finish() {
         if finishedMetrics != nil { return }
         timerCancellable?.cancel()
+        loggingCancellable?.cancel()
         var metrics: [String: Double] = [
             "Elapsed": elapsed,
             "Distance_m": distance,
@@ -224,6 +245,7 @@ final class DragViewModel: ObservableObject, Identifiable {
     func stop() {
         LocationManager.shared.stop()
         timerCancellable?.cancel()
+        loggingCancellable?.cancel()
         peakSpeedMph = 0
         reset()
     }

@@ -82,13 +82,13 @@ final class SensorFusionManager: ObservableObject {
             if loc.speed >= 0 {
                 let hdopOK = loc.horizontalAccuracy >= 0 && loc.horizontalAccuracy < 10 // metres – tighter accuracy
                 // 2) Hard floor on reported speed – treat almost-zero as zero
-                let speedOK = loc.speed > 0.2 // ~0.4 mph
+                let speedOK = loc.speed > 0.3 // ~0.67 mph
 
                 // 3) Reject improbable jumps when the device shows no acceleration.
                 let prevSpeed = fusedSpeedMps
                 let accMagInstant = sqrt(userAcc.x * userAcc.x + userAcc.y * userAcc.y + userAcc.z * userAcc.z)
                 let speedDelta = abs(loc.speed - prevSpeed)
-                // New rule: any jump >1.0 m/s (≈2.2 mph) requires noticeable acceleration (>0.1 g)
+                // Any jump >1.0 m/s (≈2.2 mph) requires noticeable acceleration (>0.1 g)
                 let unrealisticJump = speedDelta > 1.0 && accMagInstant < 0.1
 
                 if hdopOK && speedOK && !unrealisticJump {
@@ -121,7 +121,8 @@ final class SensorFusionManager: ObservableObject {
 
         // Marshal output back to the main thread so SwiftUI updates smoothly.
         DispatchQueue.main.async {
-            self.fusedSpeedMps      = spd
+            let filteredSpeed = spd < 0.1 ? 0 : spd
+            self.fusedSpeedMps      = filteredSpeed
             self.fusedDistanceMeters = dist
             if stepHit { self.stepCount += 1 }
             if let loc = location {

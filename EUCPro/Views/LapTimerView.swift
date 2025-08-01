@@ -9,7 +9,7 @@ struct LapTimerView: View {
     private var unit: SpeedUnit { SpeedUnit(rawValue: speedUnitRaw) ?? .mph }
     
     @StateObject private var motion = MotionManager.shared
-    @StateObject private var fusion = SensorFusionManager.shared
+    @StateObject private var fusion = SpeedSmoothingManager.shared
     
     // Data model for chart points
     private struct SensorPoint: Identifiable {
@@ -115,7 +115,7 @@ struct LapTimerView: View {
         .onAppear {
             LocationManager.shared.start()
             MotionManager.shared.start()
-            SensorFusionManager.shared.start()
+            SpeedSmoothingManager.shared.start()
             
             // Accelerometer stream
             motion.$userAcceleration
@@ -142,7 +142,7 @@ struct LapTimerView: View {
                 .store(in: &cancellables)
         }
         .onDisappear {
-            SensorFusionManager.shared.stop()
+            SpeedSmoothingManager.shared.stop()
             MotionManager.shared.stop()
             LocationManager.shared.stop()
         }

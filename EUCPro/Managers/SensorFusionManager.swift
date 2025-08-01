@@ -2,32 +2,39 @@ import Foundation
 import Combine
 import CoreLocation
 import CoreMotion
+import QuartzCore
 
-/// Performs lightweight sensor-fusion to provide a smooth, low-latency speed
-/// read-out that reacts quickly to acceleration yet rejects false motion caused
-/// by sensor noise or phone shaking. The class can be treated as a black box
-/// that emits `@Published` values on the main thread.
-final class SensorFusionManager: ObservableObject {
+/// Performs GPS speed smoothing to provide a smooth, low-latency speed
+/// read-out that reacts quickly to changes yet rejects false motion caused
+/// by GPS noise. The class can be treated as a black box that emits
+/// `@Published` values on the main thread.
+final class SpeedSmoothingManager: ObservableObject {
     // MARK: – Public, observable properties
     @Published private(set) var fusedSpeedMps: Double = 0           // metres / second
     @Published private(set) var fusedDistanceMeters: Double = 0     // metres
-    @Published private(set) var fusedLocation: CLLocation?          // last GPS fix used in the fusion
+    @Published private(set) var fusedLocation: CLLocation?          // last GPS fix used in the smoothing
     @Published private(set) var fusedHeading: Double = 0            // degrees (0=N)
     @Published private(set) var stepCount: Int = 0                  // very rough pedometer for debugging
 
     // MARK: – Singleton
-    static let shared = SensorFusionManager()
+    static let shared = SpeedSmoothingManager()
 
     // MARK: – Private helpers
     private let location = LocationManager.shared
     private let motion    = MotionManager.shared
-    private let estimator = SpeedEstimator()
+    private var displayLink: CADisplayLink?
 
     private var cancellables = Set<AnyCancellable>()
-    private var stationaryFrames = 0
+    
+    // GPS smoothing parameters
+    private var lastGPSSpeedMps: Double = 0.0
+    private var filteredSpeedMps: Double = 0.0
+    private var lastGPSLocation: CLLocation?
+    private var lastUpdateTime: TimeInterval = 0
 
     private init() {
         subscribeSensors()
+        setupUpdateLoop()
     }
 
     // MARK: – Lifecycle helpers
@@ -39,96 +46,91 @@ final class SensorFusionManager: ObservableObject {
     func stop() {
         location.stop()
         motion.stop()
+        displayLink?.invalidate()
+        displayLink = nil
     }
 
     func reset() {
-        estimator.reset()
         fusedSpeedMps = 0
         fusedDistanceMeters = 0
         fusedLocation = nil
         fusedHeading = 0
         stepCount = 0
-        stationaryFrames = 0
+        lastGPSSpeedMps = 0.0
+        filteredSpeedMps = 0.0
+        lastGPSLocation = nil
+        lastUpdateTime = 0
     }
 
     // MARK: – Sensor subscription
     private func subscribeSensors() {
-        // `CombineLatest3` waits until each publisher has produced at least one
-        // value before emitting. That is perfect here – we want a consistent
-        // sensor frame containing location (may be `nil`) and the two inertial
-        // measurements.
+        // Subscribe to GPS location updates
         location.$currentLocation
-            .combineLatest(motion.$userAcceleration, motion.$rotationRate)
-            .receive(on: DispatchQueue.global(qos: .utility))
-            .sink { [weak self] locationOpt, acceleration, rotation in
-                guard let self else { return }
-                self.processFrame(location: locationOpt,
-                                  userAcc: acceleration,
-                                  rotation: rotation)
+            .compactMap { $0 }
+            .sink { [weak self] location in
+                self?.handleGPSUpdate(location: location)
+            }
+            .store(in: &cancellables)
+            
+        // Keep accelerometer data for analysis but don't use for speed calculation
+        motion.$userAcceleration
+            .sink { [weak self] acceleration in
+                // Store accelerometer data for later analysis but don't use for speed calculation
+                let accMag = sqrt(acceleration.x * acceleration.x + acceleration.y * acceleration.y + acceleration.z * acceleration.z)
+                if accMag > 1.2 { // Step detection threshold
+                    DispatchQueue.main.async {
+                        self?.stepCount += 1
+                    }
+                }
             }
             .store(in: &cancellables)
     }
-
-    // MARK: – Frame processing
-    private func processFrame(location: CLLocation?,
-                              userAcc: CMAcceleration,
-                              rotation: CMRotationRate) {
-        let now = Date().timeIntervalSince1970
-        // MARK: – GPS validation & noise suppression
-        // Drop GPS fixes that are likely spurious before they contaminate the estimator.
-        var gpsSpeed: Double? = nil
-        if let loc = location {
-            // 1) Only accept when Core-Location reports a valid Doppler speed (>=0)
-            if loc.speed >= 0 {
-                let hdopOK = loc.horizontalAccuracy >= 0 && loc.horizontalAccuracy < 10 // metres – tighter accuracy
-                // 2) Hard floor on reported speed – treat almost-zero as zero
-                let speedOK = loc.speed > 0.3 // ~0.67 mph
-
-                // 3) Reject improbable jumps when the device shows no acceleration.
-                let prevSpeed = fusedSpeedMps
-                let accMagInstant = sqrt(userAcc.x * userAcc.x + userAcc.y * userAcc.y + userAcc.z * userAcc.z)
-                let speedDelta = abs(loc.speed - prevSpeed)
-                // Any jump >1.0 m/s (≈2.2 mph) requires noticeable acceleration (>0.1 g)
-                let unrealisticJump = speedDelta > 1.0 && accMagInstant < 0.1
-
-                if hdopOK && speedOK && !unrealisticJump {
-                    gpsSpeed = loc.speed
-                }
-            }
-        }
+    
+    // MARK: – GPS handling
+    private func handleGPSUpdate(location: CLLocation) {
+        // Validate GPS fix quality
+        guard location.horizontalAccuracy >= 0 && location.horizontalAccuracy < 10 else { return }
+        guard location.speed >= 0 else { return } // Valid Doppler speed
         
-        // Feed everything through the estimator (dead-reckoning + GPS fusion).
-        let (spd, dist) = estimator.processSample(timestamp: now,
-                                                  gpsSpeed: gpsSpeed,
-                                                  acceleration: userAcc,
-                                                  rotationRate: rotation)
-
-        // Simple stationary detector to clamp tiny residuals to exactly 0.
-        let accMag = sqrt(userAcc.x * userAcc.x + userAcc.y * userAcc.y + userAcc.z * userAcc.z)
-        let rotMag = sqrt(rotation.x * rotation.x + rotation.y * rotation.y + rotation.z * rotation.z)
-        let isStationaryCandidate = accMag < 0.03 && rotMag < 0.05 && (gpsSpeed ?? 0) < 0.2
-        if isStationaryCandidate {
-            stationaryFrames += 1
-            if stationaryFrames > 20 { // ≈0.4 s at 50 Hz
-                estimator.reset()
-            }
-        } else {
-            stationaryFrames = 0
-        }
-
-        // Step detection (very crude – sufficient for dev-time sanity checks)
-        let stepHit = userAcc.z > 1.2
-
-        // Marshal output back to the main thread so SwiftUI updates smoothly.
+        // Store raw GPS speed for smoothing
+        lastGPSSpeedMps = max(location.speed, 0)
+        lastGPSLocation = location
+        lastUpdateTime = Date().timeIntervalSince1970
+        
+        // Update fused location and heading
         DispatchQueue.main.async {
-            let filteredSpeed = spd < 0.1 ? 0 : spd
-            self.fusedSpeedMps      = filteredSpeed
-            self.fusedDistanceMeters = dist
-            if stepHit { self.stepCount += 1 }
-            if let loc = location {
-                self.fusedLocation = loc
-                if loc.course >= 0 { self.fusedHeading = loc.course }
+            self.fusedLocation = location
+            if location.course >= 0 {
+                self.fusedHeading = location.course
             }
+        }
+    }
+    
+    // MARK: – High-frequency update loop
+    private func setupUpdateLoop() {
+        displayLink = CADisplayLink(target: self, selector: #selector(updateSmoothedSpeed))
+        displayLink?.preferredFramesPerSecond = 100
+        displayLink?.add(to: .main, forMode: .default)
+    }
+    
+    @objc private func updateSmoothedSpeed() {
+        // Low-pass filter with alpha smoothing
+        let alpha = 0.1
+        filteredSpeedMps = alpha * lastGPSSpeedMps + (1 - alpha) * filteredSpeedMps
+        
+        // Clamp to zero for very small speeds
+        let finalSpeedMps = filteredSpeedMps < 0.1 ? 0 : filteredSpeedMps
+        
+        // Update distance using trapezoidal integration
+        let now = Date().timeIntervalSince1970
+        if lastUpdateTime > 0 {
+            let dt = now - lastUpdateTime
+            fusedDistanceMeters += finalSpeedMps * dt
+        }
+        lastUpdateTime = now
+        
+        DispatchQueue.main.async {
+            self.fusedSpeedMps = finalSpeedMps
         }
     }
 }

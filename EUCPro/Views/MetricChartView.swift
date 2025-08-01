@@ -11,6 +11,7 @@ protocol Timestamped {
 // Conform existing models
 extension SpeedPoint: Timestamped {}
 extension AccelPoint: Timestamped {}
+extension GPSPoint: Timestamped {}
 
 // MARK: - DomainXGesture utilities
 // Protocol allowing numeric-like domain types to be converted to and from Double values.

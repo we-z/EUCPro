@@ -8,7 +8,7 @@ struct DragMeasurementView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("speedUnit") private var speedUnitRaw: String = SpeedUnit.kmh.rawValue
     private var unit: SpeedUnit { SpeedUnit(rawValue: speedUnitRaw) ?? .mph }
-    @StateObject private var fusion = SensorFusionManager.shared
+    @StateObject private var fusion = SpeedSmoothingManager.shared
     @StateObject private var motion = MotionManager.shared
 
     // Data model for charting live sensor values
@@ -20,6 +20,7 @@ struct DragMeasurementView: View {
 
     @State private var accelPoints: [SensorPoint] = []
     @State private var gpsPoints: [SensorPoint] = []
+    @State private var smoothedPoints: [SensorPoint] = []
     @State private var cancellables: Set<AnyCancellable> = []
 
     var body: some View {
@@ -48,18 +49,18 @@ struct DragMeasurementView: View {
                     
                     // Live sensor charts
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("Acceleration (G)")
+                        Text("Smoothed Speed (\(unit.label))")
                             .font(.caption.bold())
-                        Chart(accelPoints) { point in
+                        Chart(smoothedPoints) { point in
                             LineMark(
                                 x: .value("Time", point.time),
-                                y: .value("G", point.value)
+                                y: .value("Speed", point.value)
                             )
                             .interpolationMethod(.linear)
                         }
                         .frame(height: 120)
                         .chartXAxisLabel("Time (s)")
-                        .chartYAxisLabel("Acceleration (G)")
+                        .chartYAxisLabel("Speed (\(unit.label))")
                         
                         Text("GPS Speed (\(unit.label))")
                             .font(.caption.bold())
@@ -73,6 +74,19 @@ struct DragMeasurementView: View {
                         .frame(height: 120)
                         .chartXAxisLabel("Time (s)")
                         .chartYAxisLabel("Speed (\(unit.label))")
+                        
+                        Text("Acceleration (G)")
+                            .font(.caption.bold())
+                        Chart(accelPoints) { point in
+                            LineMark(
+                                x: .value("Time", point.time),
+                                y: .value("G", point.value)
+                            )
+                            .interpolationMethod(.linear)
+                        }
+                        .frame(height: 120)
+                        .chartXAxisLabel("Time (s)")
+                        .chartYAxisLabel("Acceleration (G)")
                     }
                     .padding()
                     Spacer()
@@ -96,9 +110,20 @@ struct DragMeasurementView: View {
         .onAppear {
             LocationManager.shared.start()
             MotionManager.shared.start()
-            SensorFusionManager.shared.start()
+            SpeedSmoothingManager.shared.start()
 
             // Live data collection
+            // Smoothed speed from fusion manager
+            fusion.$fusedSpeedMps
+                .receive(on: DispatchQueue.main)
+                .sink { speedMps in
+                    let value = unit.convert(mps: speedMps)
+                    let point = SensorPoint(time: viewModel.elapsed, value: value)
+                    smoothedPoints.append(point)
+                    if smoothedPoints.count > 300 { smoothedPoints.removeFirst() }
+                }
+                .store(in: &cancellables)
+
             // Accelerometer
             motion.$userAcceleration
                 .receive(on: DispatchQueue.main)
@@ -125,7 +150,7 @@ struct DragMeasurementView: View {
         }
         .onDisappear {
             viewModel.stop()
-            SensorFusionManager.shared.stop()
+            SpeedSmoothingManager.shared.stop()
         }
     }
 }

@@ -13,6 +13,13 @@ struct SpeedPoint: Codable, Identifiable {
     let distance: Double // meters
 }
 
+// GPS speed data point
+struct GPSPoint: Codable, Identifiable {
+    let id = UUID()
+    let timestamp: Date
+    let speed: Double // m/s
+}
+
 // New: acceleration magnitude samples (G)
 struct AccelPoint: Codable, Identifiable {
     let id = UUID()
@@ -27,6 +34,7 @@ struct Run: Identifiable, Codable {
     let title: String
     let metrics: [String: Double]
     let speedData: [SpeedPoint]
+    let gpsSpeedData: [GPSPoint]?
     let accelData: [AccelPoint]?
     let trackName: String?
     // Optional array of coordinates representing the route path (for lap sessions)
@@ -37,6 +45,7 @@ struct Run: Identifiable, Codable {
          title: String,
          metrics: [String: Double],
          speedData: [SpeedPoint],
+         gpsSpeedData: [GPSPoint]? = nil,
          accelData: [AccelPoint]? = nil,
          trackName: String? = nil,
          route: [Coordinate]? = nil) {
@@ -46,6 +55,7 @@ struct Run: Identifiable, Codable {
         self.title = title
         self.metrics = metrics
         self.speedData = speedData
+        self.gpsSpeedData = gpsSpeedData
         self.accelData = accelData
         self.trackName = trackName
         self.route = route

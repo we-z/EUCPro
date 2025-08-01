@@ -113,6 +113,14 @@ struct RunDetailView: View {
                         yAxisLabel: "Speed (\(unit.label))"
                     )
                 }
+                // GPS Speed chart
+                if let gpsData = run.gpsSpeedData, !gpsData.isEmpty {
+                    MetricChartView(
+                        data: gpsData,
+                        value: { unit.convert(mps: $0.speed) },
+                        yAxisLabel: "GPS Speed (\(unit.label))"
+                    )
+                }
                 // Acceleration chart
                 if let acc = run.accelData, !acc.isEmpty {
                     MetricChartView(

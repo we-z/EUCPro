@@ -25,6 +25,7 @@ final class DragViewModel: ObservableObject, Identifiable {
     private var lastSampleLocation: CLLocation?
     // Removed filteredSpeed and smoothingFactor for real-time speed reporting
     private var speedPoints: [SpeedPoint] = []
+    private var gpsSpeedPoints: [GPSPoint] = []
     private var accelData: [AccelPoint] = []
     private var recentAccelerationMagnitude: Double = 0
     private var stationaryCounter: Int = 0 // counts motion frames below threshold
@@ -36,7 +37,7 @@ final class DragViewModel: ObservableObject, Identifiable {
     private var lastLoggedSample: Date?
     
     private let locationManager = LocationManager.shared
-    private let fusionManager = SensorFusionManager.shared
+    private let fusionManager = SpeedSmoothingManager.shared
     
     init(startSpeed: Double = 0, targetSpeed: Double? = nil, targetDistance: Double? = nil) {
         self.startSpeed = startSpeed
@@ -53,7 +54,7 @@ final class DragViewModel: ObservableObject, Identifiable {
         subscribeFusion()
         subscribeMotion()
         // Pedometer support removed – no longer needed
-        SensorFusionManager.shared.reset()
+        SpeedSmoothingManager.shared.reset()
         // Start 10-Hz logging timer
         loggingCancellable = Timer.publish(every: 0.1, on: .main, in: .common)
             .autoconnect()
@@ -69,7 +70,7 @@ final class DragViewModel: ObservableObject, Identifiable {
     }
     
     func reset() {
-        SensorFusionManager.shared.reset()
+        SpeedSmoothingManager.shared.reset()
         startTime = nil
         loggingCancellable?.cancel()
         lastLoggedSample = nil
@@ -77,6 +78,7 @@ final class DragViewModel: ObservableObject, Identifiable {
         elapsed = 0
         distance = 0
         speedPoints.removeAll()
+        gpsSpeedPoints.removeAll()
         finishedMetrics = nil
         peakSpeedMph = 0
     }
@@ -153,6 +155,9 @@ final class DragViewModel: ObservableObject, Identifiable {
         // Stationary filtering – reject tiny speeds that are likely noise
         if gpsSpeed < 0.2 { gpsSpeed = 0 }
 
+        // Log GPS speed data
+        gpsSpeedPoints.append(GPSPoint(timestamp: Date(), speed: gpsSpeed))
+
         // Kalman already blends this GPS into fused stream.
         // We no longer override currentSpeed here to avoid glitching; the fused sink delivers high-rate view updates.
         lastGPSFixTime = Date()
@@ -228,6 +233,7 @@ final class DragViewModel: ObservableObject, Identifiable {
                       title: "Drag " + DateFormatter.localizedString(from: Date(), dateStyle: .short, timeStyle: .short),
                       metrics: metrics,
                       speedData: speedPoints,
+                      gpsSpeedData: gpsSpeedPoints,
                       accelData: accelData,
                       trackName: nil)
         DataStore.shared.add(run: run)

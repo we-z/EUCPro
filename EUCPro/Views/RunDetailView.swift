@@ -38,24 +38,21 @@ struct RunDetailView: View {
                             MapPolyline(coordinates: coords)
                                 .stroke(Color.blue, lineWidth: 3)
 
-                            // Annotate speed at each logged coordinate (every Nth to reduce clutter)
                             let speeds: [Double] = run.gpsSpeedData?.map { $0.speed } ?? run.speedData.map { $0.speed }
-                            let paired = Array(zip(coords, speeds))
-                            ForEach(Array(paired.enumerated()), id: \ .offset) { idx, pair in
-                                let (coord, spd) = pair
-                                // Show every ~10th point to avoid hundreds of markers
-                                if idx % 10 == 0 {
-                                    Annotation(coordinate: coord) {
-                                        Circle()
-                                            .fill(Color.blue)
-                                            .frame(width: 6, height: 6)
-                                    } label: {
-                                        Text(String(format: "%.0f", unit.convert(mps: spd)))
-                                            .font(.caption2)
-                                            .padding(2)
-                                            .background(.thinMaterial)
-                                            .clipShape(RoundedRectangle(cornerRadius: 4))
-                                    }
+                            let points = pointsToAnnotate(coords: coords, speeds: speeds)
+
+                            ForEach(Array(points.enumerated()), id: \ .offset) { idx, point in
+                                let (coord, spd) = point
+                                Annotation(coordinate: coord) {
+                                    Circle()
+                                        .fill(Color.blue)
+                                        .frame(width: 6, height: 6)
+                                } label: {
+                                    Text(String(format: "%.0f", unit.convert(mps: spd)))
+                                        .font(.caption2)
+                                        .padding(2)
+                                        .background(.thinMaterial)
+                                        .clipShape(RoundedRectangle(cornerRadius: 4))
                                 }
                             }
                         }
@@ -119,5 +116,36 @@ struct RunDetailView: View {
             result[displayKey] = String(format: "%.2f", displayValue)
         }
         return result
+    }
+
+    private func pointsToAnnotate(coords: [CLLocationCoordinate2D], speeds: [Double]) -> [(CLLocationCoordinate2D, Double)] {
+        var annotatedPoints: [(CLLocationCoordinate2D, Double)] = []
+        var lastAnnotatedSpeed: Double?
+
+        for (idx, coord) in coords.enumerated() {
+            let currentSpeed = speeds[idx]
+
+            // Always include the first point
+            if idx == 0 {
+                annotatedPoints.append((coord, currentSpeed))
+                lastAnnotatedSpeed = currentSpeed
+                continue
+            }
+
+            // Include points at a regular interval (e.g., every 3rd point)
+            if idx % 3 == 0 {
+                annotatedPoints.append((coord, currentSpeed))
+                lastAnnotatedSpeed = currentSpeed
+                continue
+            }
+
+            // Include points where speed changes significantly
+            if let lastSpeed = lastAnnotatedSpeed, abs(currentSpeed - lastSpeed) > 1.0 { // 1.0 m/s threshold
+                annotatedPoints.append((coord, currentSpeed))
+                lastAnnotatedSpeed = currentSpeed
+                continue
+            }
+        }
+        return annotatedPoints
     }
 } 

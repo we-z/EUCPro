@@ -39,7 +39,8 @@ struct RunDetailView: View {
                                 .stroke(Color.blue, lineWidth: 3)
 
                             // Annotate speed at each logged coordinate (every Nth to reduce clutter)
-                            let paired = Array(zip(coords, run.speedData))
+                            let speeds: [Double] = run.gpsSpeedData?.map { $0.speed } ?? run.speedData.map { $0.speed }
+                            let paired = Array(zip(coords, speeds))
                             ForEach(Array(paired.enumerated()), id: \ .offset) { idx, pair in
                                 let (coord, spd) = pair
                                 // Show every ~10th point to avoid hundreds of markers
@@ -49,7 +50,7 @@ struct RunDetailView: View {
                                             .fill(Color.blue)
                                             .frame(width: 6, height: 6)
                                     } label: {
-                                        Text(String(format: "%.0f", unit.convert(mps: spd.speed)))
+                                        Text(String(format: "%.0f", unit.convert(mps: spd)))
                                             .font(.caption2)
                                             .padding(2)
                                             .background(.thinMaterial)

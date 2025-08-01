@@ -45,6 +45,16 @@ struct DragMeasurementView: View {
                                 .foregroundColor(.secondary)
                         }
                         .padding(.vertical, 16)
+                    } else {
+                        VStack(spacing: 4) {
+                            Text("Go!")
+                                .font(.title.bold())
+                            Text("ready to record 0 to \(String(format: "%.1f", unit.convert(mps: viewModel.targetSpeed ?? 0)))")
+                                .font(.caption)
+                                .multilineTextAlignment(.center)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.vertical, 16)
                     }
                     
                     // Live sensor charts
@@ -112,7 +122,7 @@ struct DragMeasurementView: View {
             MotionManager.shared.start()
             SpeedSmoothingManager.shared.start()
 
-            // Live data collection
+            // Live data collection - maintain history like TempView
             // Smoothed speed from fusion manager
             fusion.$fusedSpeedMps
                 .receive(on: DispatchQueue.main)
@@ -120,7 +130,7 @@ struct DragMeasurementView: View {
                     let value = unit.convert(mps: speedMps)
                     let point = SensorPoint(time: viewModel.elapsed, value: value)
                     smoothedPoints.append(point)
-                    if smoothedPoints.count > 300 { smoothedPoints.removeFirst() }
+                    // Keep all points instead of limiting to 300
                 }
                 .store(in: &cancellables)
 
@@ -131,7 +141,7 @@ struct DragMeasurementView: View {
                     let mag = sqrt(acc.x * acc.x + acc.y * acc.y + acc.z * acc.z)
                     let point = SensorPoint(time: viewModel.elapsed, value: mag)
                     accelPoints.append(point)
-                    if accelPoints.count > 300 { accelPoints.removeFirst() }
+                    // Keep all points instead of limiting to 300
                 }
                 .store(in: &cancellables)
 
@@ -144,7 +154,7 @@ struct DragMeasurementView: View {
                     let value = unit.convert(mps: speedMps)
                     let point = SensorPoint(time: viewModel.elapsed, value: value)
                     gpsPoints.append(point)
-                    if gpsPoints.count > 300 { gpsPoints.removeFirst() }
+                    // Keep all points instead of limiting to 300
                 }
                 .store(in: &cancellables)
         }

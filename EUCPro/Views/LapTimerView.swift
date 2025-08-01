@@ -164,7 +164,7 @@ struct LapTimerView: View {
                 .receive(on: DispatchQueue.main)
                 .sink { speedMps in
                     let value = unit.convert(mps: speedMps)
-                    let point = SensorPoint(time: viewModel.currentLapTime, value: value)
+                    let point = SensorPoint(time: viewModel.elapsed, value: value)
                     smoothedPoints.append(point)
                     // Keep all points instead of limiting to 300
                 }
@@ -175,7 +175,7 @@ struct LapTimerView: View {
                 .receive(on: DispatchQueue.main)
                 .sink { acc in
                     let mag = sqrt(acc.x * acc.x + acc.y * acc.y + acc.z * acc.z)
-                    let point = SensorPoint(time: viewModel.currentLapTime, value: mag)
+                    let point = SensorPoint(time: viewModel.elapsed, value: mag)
                     accelPoints.append(point)
                     // Keep all points instead of limiting to 300
                 }
@@ -188,7 +188,7 @@ struct LapTimerView: View {
                 .sink { loc in
                     let speedMps = max(0, loc.speed) // -1 means invalid
                     let value = unit.convert(mps: speedMps)
-                    let point = SensorPoint(time: viewModel.currentLapTime, value: value)
+                    let point = SensorPoint(time: viewModel.elapsed, value: value)
                     gpsPoints.append(point)
                     // Keep all points instead of limiting to 300
                 }

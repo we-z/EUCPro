@@ -9,11 +9,13 @@ final class LapViewModel: ObservableObject, Identifiable {
     @Published var currentSpeed: Double = 0 // m/s
     @Published var hasGPSFix: Bool = false
     @Published var currentLapTime: Double = 0
+    @Published var elapsed: Double = 0
     @Published var completedLaps: [Double] = []
     @Published var predictiveLap: Double = 0
     
     private var startLocation: CLLocation
     private var lastCrossTime: Date?
+    private var sessionStartTime: Date?
     private var cancellables = Set<AnyCancellable>()
     private var speedPoints: [SpeedPoint] = []
     private var gpsSpeedPoints: [GPSPoint] = []
@@ -31,11 +33,15 @@ final class LapViewModel: ObservableObject, Identifiable {
         self.track = track
         self.startLocation = track.startFinishLocation()
         lastCrossTime = Date()
+        sessionStartTime = Date()
         timerCancellable = Timer.publish(every: 0.02, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in
                 guard let self, let last = self.lastCrossTime else { return }
                 self.currentLapTime = Date().timeIntervalSince(last)
+                if let sessionStart = self.sessionStartTime {
+                    self.elapsed = Date().timeIntervalSince(sessionStart)
+                }
             }
         subscribe()
         subscribeFusion()

@@ -79,8 +79,19 @@ final class DragViewModel: ObservableObject, Identifiable {
         distance = 0
         speedPoints.removeAll()
         gpsSpeedPoints.removeAll()
+        accelData.removeAll()
         finishedMetrics = nil
         peakSpeedMph = 0
+        stationaryCounter = 0
+        recentAccelerationMagnitude = 0
+        
+        // Clear all subscriptions to prevent interference with new sessions
+        cancellables.removeAll()
+        
+        // Resubscribe to sensors after clearing
+        subscribe()
+        subscribeFusion()
+        subscribeMotion()
     }
     
     private func subscribe() {

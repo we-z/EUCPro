@@ -41,6 +41,11 @@ final class SpeedSmoothingManager: ObservableObject {
     func start() {
         location.start()
         motion.start()
+        
+        // Restart display link if it was stopped
+        if displayLink == nil {
+            setupUpdateLoop()
+        }
     }
 
     func stop() {
@@ -60,6 +65,10 @@ final class SpeedSmoothingManager: ObservableObject {
         filteredSpeedMps = 0.0
         lastGPSLocation = nil
         lastUpdateTime = 0
+        
+        // Clear existing subscriptions and resubscribe to ensure clean state
+        cancellables.removeAll()
+        subscribeSensors()
     }
 
     // MARK: – Sensor subscription

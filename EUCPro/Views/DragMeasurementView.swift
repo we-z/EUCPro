@@ -118,6 +118,12 @@ struct DragMeasurementView: View {
             }
         }
         .onAppear {
+            // Clear any existing data from previous sessions
+            smoothedPoints.removeAll()
+            gpsPoints.removeAll()
+            accelPoints.removeAll()
+            cancellables.removeAll()
+            
             LocationManager.shared.start()
             MotionManager.shared.start()
             SpeedSmoothingManager.shared.start()
@@ -159,6 +165,9 @@ struct DragMeasurementView: View {
                 .store(in: &cancellables)
         }
         .onDisappear {
+            // Clean up all subscriptions
+            cancellables.removeAll()
+            
             viewModel.stop()
             SpeedSmoothingManager.shared.stop()
         }

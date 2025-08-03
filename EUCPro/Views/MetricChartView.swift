@@ -312,6 +312,12 @@ struct MetricChartView<Point>: View where Point: Identifiable & Timestamped {
                                     .fill(Color(uiColor: .systemBackground))
                                     .shadow(radius: 2)
                             )
+                            .onAppear{
+                                UISelectionFeedbackGenerator().selectionChanged()
+                            }
+                            .onChange(of: relativeX) {
+                                UISelectionFeedbackGenerator().selectionChanged()
+                            }
                         }
                         
                 }
@@ -364,6 +370,15 @@ struct MetricChartView<Point>: View where Point: Identifiable & Timestamped {
                                         .fill(Color(uiColor: .systemBackground))
                                         .shadow(radius: 2)
                                 )
+                                .onAppear{
+                                    UISelectionFeedbackGenerator().selectionChanged()
+                                }
+                                .onChange(of: startStr) {
+                                    UISelectionFeedbackGenerator().selectionChanged()
+                                }
+                                .onChange(of: endStr) {
+                                    UISelectionFeedbackGenerator().selectionChanged()
+                                }
                             }
                         }
                 }
@@ -462,12 +477,9 @@ struct MetricChartView<Point>: View where Point: Identifiable & Timestamped {
             case .began:
                 selected = value
                 isSelecting = true
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             case .changed:
                 selected = value
                 isSelecting = true
-                // Provide subtle feedback as the finger moves across points
-                UISelectionFeedbackGenerator().selectionChanged()
             default:
                 selected = nil
                 isSelecting = false
@@ -534,13 +546,6 @@ private struct RangeXGesture<Bound: ExpressibleByDouble>: UIGestureRecognizerRep
             guard let v0: Bound = value(forTouch: 0), let v1: Bound = value(forTouch: 1) else { return }
             range = min(v0, v1)...max(v0, v1)
             isSelecting = true
-
-            // Haptics: medium impact on begin, subtle selection for subsequent updates
-            if recognizer.state == .began {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            } else {
-                UISelectionFeedbackGenerator().selectionChanged()
-            }
         default:
             range = nil
             isSelecting = false

@@ -115,7 +115,7 @@ final class SpeedSmoothingManager: ObservableObject {
     
     @objc private func updateSmoothedSpeed() {
         // Low-pass filter with alpha smoothing
-        let alpha = 0.1
+        let alpha = 0.01
         filteredSpeedMps = alpha * lastGPSSpeedMps + (1 - alpha) * filteredSpeedMps
         
         // Clamp to zero for very small speeds
